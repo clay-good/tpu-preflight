@@ -120,7 +120,7 @@ pub fn run_io002() -> CheckResult {
     let start = Instant::now();
 
     // Test write throughput using dd
-    let test_file = "/tmp/tpu-preflight-disk-test";
+    let test_file = "/tmp/tpu-doc-disk-test";
     let block_size = "1M";
     let count = "100"; // 100MB test
 
@@ -234,7 +234,7 @@ pub fn run_io004() -> CheckResult {
     }
 
     // Check write permission
-    let test_file = path.join(".tpu-preflight-test");
+    let test_file = path.join(".tpu-doc-test");
     let can_write = std::fs::write(&test_file, "test").is_ok();
     let _ = std::fs::remove_file(&test_file);
 

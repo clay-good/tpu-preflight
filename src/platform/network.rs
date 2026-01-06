@@ -5,7 +5,7 @@
 //! # Graceful Degradation
 //!
 //! This module handles errors gracefully:
-//! - DNS failures: Returns PreflightError::IoError with hostname context
+//! - DNS failures: Returns TpuDocError::IoError with hostname context
 //! - Connection timeout: Returns ConnectResult with success=false
 //! - Connection refused: Returns error with connection context
 //! - HTTP errors: Returns HttpResult with status_code for caller to handle
@@ -15,7 +15,7 @@
 //! All operations respect timeout parameters. No function will block
 //! indefinitely or panic.
 
-use crate::PreflightError;
+use crate::TpuDocError;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
@@ -58,14 +58,14 @@ pub struct NetworkInterface {
 }
 
 /// Check DNS resolution for a hostname
-pub fn check_dns_resolution(hostname: &str) -> Result<DnsResult, PreflightError> {
+pub fn check_dns_resolution(hostname: &str) -> Result<DnsResult, TpuDocError> {
     let start = Instant::now();
 
     // Use ToSocketAddrs for DNS resolution
     let socket_addr = format!("{}:80", hostname);
     let addrs: Vec<_> = socket_addr
         .to_socket_addrs()
-        .map_err(|e| PreflightError::IoError {
+        .map_err(|e| TpuDocError::IoError {
             context: format!("DNS resolution for {}", hostname),
             message: e.to_string(),
         })?
@@ -74,7 +74,7 @@ pub fn check_dns_resolution(hostname: &str) -> Result<DnsResult, PreflightError>
     let resolution_time_ms = start.elapsed().as_millis() as u64;
 
     if addrs.is_empty() {
-        return Err(PreflightError::IoError {
+        return Err(TpuDocError::IoError {
             context: format!("DNS resolution for {}", hostname),
             message: "No addresses returned".to_string(),
         });
@@ -93,19 +93,19 @@ pub fn check_tcp_connectivity(
     host: &str,
     port: u16,
     timeout_ms: u64,
-) -> Result<ConnectResult, PreflightError> {
+) -> Result<ConnectResult, TpuDocError> {
     let start = Instant::now();
 
     // Resolve hostname first
     let socket_addr = format!("{}:{}", host, port);
     let addr = socket_addr
         .to_socket_addrs()
-        .map_err(|e| PreflightError::IoError {
+        .map_err(|e| TpuDocError::IoError {
             context: format!("TCP connect to {}:{}", host, port),
             message: format!("DNS resolution failed: {}", e),
         })?
         .next()
-        .ok_or_else(|| PreflightError::IoError {
+        .ok_or_else(|| TpuDocError::IoError {
             context: format!("TCP connect to {}:{}", host, port),
             message: "No address resolved".to_string(),
         })?;
@@ -127,7 +127,7 @@ pub fn check_tcp_connectivity(
                     latency_ms,
                 })
             } else {
-                Err(PreflightError::IoError {
+                Err(TpuDocError::IoError {
                     context: format!("TCP connect to {}:{}", host, port),
                     message: e.to_string(),
                 })
@@ -137,7 +137,7 @@ pub fn check_tcp_connectivity(
 }
 
 /// Check an HTTP endpoint
-pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, PreflightError> {
+pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, TpuDocError> {
     let start = Instant::now();
 
     // Parse URL (simple implementation)
@@ -158,18 +158,18 @@ pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, Pre
     let addr = format!("{}:{}", host, port);
     let mut stream = TcpStream::connect_timeout(
         &addr.to_socket_addrs()
-            .map_err(|e| PreflightError::IoError {
+            .map_err(|e| TpuDocError::IoError {
                 context: format!("HTTP request to {}", url),
                 message: e.to_string(),
             })?
             .next()
-            .ok_or_else(|| PreflightError::IoError {
+            .ok_or_else(|| TpuDocError::IoError {
                 context: format!("HTTP request to {}", url),
                 message: "No address resolved".to_string(),
             })?,
         Duration::from_millis(timeout_ms),
     )
-    .map_err(|e| PreflightError::IoError {
+    .map_err(|e| TpuDocError::IoError {
         context: format!("HTTP request to {}", url),
         message: e.to_string(),
     })?;
@@ -182,12 +182,12 @@ pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, Pre
         "GET {} HTTP/1.1\r\n\
          Host: {}\r\n\
          Connection: close\r\n\
-         User-Agent: tpu-preflight/0.1.0\r\n\
+         User-Agent: tpu-doc/0.1.0\r\n\
          \r\n",
         path, host
     );
 
-    stream.write_all(request.as_bytes()).map_err(|e| PreflightError::IoError {
+    stream.write_all(request.as_bytes()).map_err(|e| TpuDocError::IoError {
         context: format!("HTTP request to {}", url),
         message: format!("Write failed: {}", e),
     })?;
@@ -195,7 +195,7 @@ pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, Pre
     // Read response
     let mut reader = BufReader::new(stream);
     let mut status_line = String::new();
-    reader.read_line(&mut status_line).map_err(|e| PreflightError::IoError {
+    reader.read_line(&mut status_line).map_err(|e| TpuDocError::IoError {
         context: format!("HTTP request to {}", url),
         message: format!("Read failed: {}", e),
     })?;
@@ -234,7 +234,7 @@ pub fn check_http_endpoint(url: &str, timeout_ms: u64) -> Result<HttpResult, Pre
 }
 
 /// Get network interfaces
-pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, PreflightError> {
+pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, TpuDocError> {
     let mut interfaces = Vec::new();
 
     // Read from /sys/class/net
@@ -264,13 +264,13 @@ pub fn get_network_interfaces() -> Result<Vec<NetworkInterface>, PreflightError>
 
 // Helper functions
 
-fn parse_url(url: &str) -> Result<(String, u16, String, bool), PreflightError> {
+fn parse_url(url: &str) -> Result<(String, u16, String, bool), TpuDocError> {
     let (use_https, url_rest) = if let Some(rest) = url.strip_prefix("https://") {
         (true, rest)
     } else if let Some(rest) = url.strip_prefix("http://") {
         (false, rest)
     } else {
-        return Err(PreflightError::ParseError {
+        return Err(TpuDocError::ParseError {
             context: "parse_url".to_string(),
             message: format!("Invalid URL scheme: {}", url),
         });
@@ -283,7 +283,7 @@ fn parse_url(url: &str) -> Result<(String, u16, String, bool), PreflightError> {
 
     let (host, port) = match host_port.find(':') {
         Some(idx) => {
-            let port: u16 = host_port[idx + 1..].parse().map_err(|_| PreflightError::ParseError {
+            let port: u16 = host_port[idx + 1..].parse().map_err(|_| TpuDocError::ParseError {
                 context: "parse_url".to_string(),
                 message: format!("Invalid port in URL: {}", url),
             })?;

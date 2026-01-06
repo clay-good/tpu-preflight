@@ -1,10 +1,10 @@
 # CI/CD Integration Guide
 
-Guide for integrating tpu-preflight into continuous integration and deployment pipelines.
+Guide for integrating tpu-doc into continuous integration and deployment pipelines.
 
 ## Exit Codes
 
-tpu-preflight uses standard exit codes for CI/CD integration:
+tpu-doc uses standard exit codes for CI/CD integration:
 
 | Code | Meaning | CI Action |
 |------|---------|-----------|
@@ -22,13 +22,13 @@ tpu-preflight uses standard exit codes for CI/CD integration:
 JUnit XML format is widely supported by CI systems for test result reporting.
 
 ```bash
-tpu-preflight check --format junit > results.xml
+tpu-doc check --format junit > results.xml
 ```
 
 Output structure:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="tpu-preflight" tests="31" failures="0" warnings="2" skipped="1" time="12.345">
+<testsuites name="tpu-doc" tests="31" failures="0" warnings="2" skipped="1" time="12.345">
   <testsuite name="Hardware" tests="6" failures="0" time="2.100">
     <testcase name="HW-001: TPU Device Detection" classname="Hardware" time="0.045">
     </testcase>
@@ -48,7 +48,7 @@ Output structure:
 JSON format for custom processing and storage.
 
 ```bash
-tpu-preflight check --format json > results.json
+tpu-doc check --format json > results.json
 ```
 
 Output structure:
@@ -87,8 +87,8 @@ Output structure:
 ### Basic Workflow
 
 ```yaml
-# .github/workflows/tpu-preflight.yml
-name: TPU Preflight Validation
+# .github/workflows/tpu-doc.yml
+name: TPU Doc Validation
 
 on:
   workflow_dispatch:
@@ -102,19 +102,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download tpu-preflight
+      - name: Download tpu-doc
         run: |
-          curl -L -o tpu-preflight https://github.com/clay-good/tpu-preflight/releases/latest/download/tpu-preflight-linux-x86_64
-          chmod +x tpu-preflight
+          curl -L -o tpu-doc https://github.com/clay-good/tpu-doc/releases/latest/download/tpu-doc-linux-x86_64
+          chmod +x tpu-doc
 
-      - name: Run Preflight Checks
-        run: ./tpu-preflight check --format junit > results.xml
+      - name: Run TPU Doc Checks
+        run: ./tpu-doc check --format junit > results.xml
 
       - name: Upload Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: preflight-results
+          name: tpu-doc-results
           path: results.xml
 
       - name: Publish Test Results
@@ -135,20 +135,20 @@ on:
     branches: [main]
 
 jobs:
-  preflight:
+  tpu-doc-check:
     runs-on: self-hosted  # TPU VM runner
     outputs:
-      status: ${{ steps.preflight.outcome }}
+      status: ${{ steps.tpu_doc.outcome }}
     steps:
-      - name: Run Preflight
-        id: preflight
+      - name: Run TPU Doc
+        id: tpu_doc
         run: |
-          ./tpu-preflight check --fail-fast --quiet
+          ./tpu-doc check --fail-fast --quiet
           echo "status=success" >> $GITHUB_OUTPUT
 
   deploy:
-    needs: preflight
-    if: needs.preflight.outputs.status == 'success'
+    needs: tpu-doc-check
+    if: needs.tpu-doc-check.outputs.status == 'success'
     runs-on: self-hosted
     steps:
       - name: Deploy Application
@@ -178,15 +178,15 @@ jobs:
         run: |
           aws s3 cp s3://my-bucket/tpu-baselines/baseline.json baseline.json || true
 
-      - name: Run Preflight with Baseline
+      - name: Run TPU Doc with Baseline
         run: |
-          ./tpu-preflight check --format json --baseline baseline.json > current.json
+          ./tpu-doc check --format json --baseline baseline.json > current.json
         continue-on-error: true
 
       - name: Check for Regressions
         run: |
           if [ $? -eq 1 ]; then
-            echo "::error::Preflight check failed - possible regression"
+            echo "::error::TPU Doc check failed - possible regression"
             exit 1
           fi
 
@@ -208,12 +208,12 @@ stages:
   - validate
   - deploy
 
-preflight:
+tpu-doc-check:
   stage: validate
   tags:
     - tpu  # Runner on TPU VM
   script:
-    - ./tpu-preflight check --format junit > results.xml
+    - ./tpu-doc check --format junit > results.xml
   artifacts:
     when: always
     reports:
@@ -227,7 +227,7 @@ deploy:
   tags:
     - tpu
   needs:
-    - preflight
+    - tpu-doc-check
   script:
     - echo "Deploying application..."
   only:
@@ -239,20 +239,20 @@ deploy:
 ```yaml
 # .gitlab-ci.yml
 variables:
-  BASELINE_PATH: /var/lib/tpu-preflight/baseline.json
+  BASELINE_PATH: /var/lib/tpu-doc/baseline.json
 
-preflight:
+tpu-doc-check:
   stage: validate
   tags:
     - tpu
   script:
     - |
       if [ -f "$BASELINE_PATH" ]; then
-        ./tpu-preflight check --format json --baseline "$BASELINE_PATH" > results.json
+        ./tpu-doc check --format json --baseline "$BASELINE_PATH" > results.json
       else
-        ./tpu-preflight check --format json > results.json
+        ./tpu-doc check --format json > results.json
       fi
-    - ./tpu-preflight check --format junit > results.xml
+    - ./tpu-doc check --format junit > results.xml
   after_script:
     - |
       if [ "$CI_JOB_STATUS" == "success" ]; then
@@ -281,9 +281,9 @@ pipeline {
     }
 
     stages {
-        stage('Preflight') {
+        stage('TPU Doc') {
             steps {
-                sh './tpu-preflight check --format junit > results.xml'
+                sh './tpu-doc check --format junit > results.xml'
             }
             post {
                 always {
@@ -305,8 +305,8 @@ pipeline {
     post {
         failure {
             emailext (
-                subject: "TPU Preflight Failed: ${env.JOB_NAME}",
-                body: "Preflight validation failed. Check ${env.BUILD_URL} for details.",
+                subject: "TPU Doc Failed: ${env.JOB_NAME}",
+                body: "TPU Doc validation failed. Check ${env.BUILD_URL} for details.",
                 to: 'team@example.com'
             )
         }
@@ -323,20 +323,20 @@ node('tpu-vm') {
         checkout scm
     }
 
-    stage('Preflight') {
+    stage('TPU Doc') {
         def exitCode = sh(
-            script: './tpu-preflight check --format junit > results.xml',
+            script: './tpu-doc check --format junit > results.xml',
             returnStatus: true
         )
 
         junit 'results.xml'
 
         if (exitCode == 1) {
-            error('Preflight checks failed')
+            error('TPU Doc checks failed')
         } else if (exitCode == 2) {
-            unstable('Preflight checks have warnings')
+            unstable('TPU Doc checks have warnings')
         } else if (exitCode == 3) {
-            error('Preflight runtime error')
+            error('TPU Doc runtime error')
         }
     }
 
@@ -352,7 +352,7 @@ node('tpu-vm') {
 
 ### Init Container
 
-Run preflight as an init container before your main workload:
+Run tpu-doc as an init container before your main workload:
 
 ```yaml
 # deployment.yaml
@@ -371,9 +371,9 @@ spec:
         app: tpu-workload
     spec:
       initContainers:
-        - name: preflight
-          image: your-registry/tpu-preflight:latest
-          command: ["/tpu-preflight"]
+        - name: tpu-doc
+          image: your-registry/tpu-doc:latest
+          command: ["/tpu-doc"]
           args: ["check", "--fail-fast", "--quiet"]
           resources:
             limits:
@@ -389,11 +389,11 @@ spec:
 ### Pre-Deployment Job
 
 ```yaml
-# preflight-job.yaml
+# tpu-doc-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: tpu-preflight
+  name: tpu-doc
   annotations:
     argocd.argoproj.io/hook: PreSync
 spec:
@@ -401,9 +401,9 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-        - name: preflight
-          image: your-registry/tpu-preflight:latest
-          command: ["/tpu-preflight"]
+        - name: tpu-doc
+          image: your-registry/tpu-doc:latest
+          command: ["/tpu-doc"]
           args: ["check", "--format", "json"]
           resources:
             limits:
@@ -417,45 +417,45 @@ spec:
 ### GKE TPU Node Pool Validation
 
 ```yaml
-# daemonset-preflight.yaml
+# daemonset-tpu-doc.yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: tpu-preflight
+  name: tpu-doc
   namespace: kube-system
 spec:
   selector:
     matchLabels:
-      name: tpu-preflight
+      name: tpu-doc
   template:
     metadata:
       labels:
-        name: tpu-preflight
+        name: tpu-doc
     spec:
       tolerations:
         - key: google.com/tpu
           operator: Exists
           effect: NoSchedule
       containers:
-        - name: preflight
-          image: your-registry/tpu-preflight:latest
+        - name: tpu-doc
+          image: your-registry/tpu-doc:latest
           command: ["/bin/sh", "-c"]
           args:
             - |
               while true; do
-                /tpu-preflight check --format json > /var/log/preflight/results.json
+                /tpu-doc check --format json > /var/log/tpu-doc/results.json
                 sleep 3600  # Run every hour
               done
           volumeMounts:
             - name: results
-              mountPath: /var/log/preflight
+              mountPath: /var/log/tpu-doc
           resources:
             limits:
               google.com/tpu: 8
       volumes:
         - name: results
           hostPath:
-            path: /var/log/tpu-preflight
+            path: /var/log/tpu-doc
       nodeSelector:
         cloud.google.com/gke-tpu: "true"
 ```
@@ -476,9 +476,9 @@ resource "google_tpu_vm" "training" {
 
   provisioner "remote-exec" {
     inline = [
-      "curl -L -o /usr/local/bin/tpu-preflight https://github.com/clay-good/tpu-preflight/releases/latest/download/tpu-preflight-linux-x86_64",
-      "chmod +x /usr/local/bin/tpu-preflight",
-      "/usr/local/bin/tpu-preflight check --fail-fast"
+      "curl -L -o /usr/local/bin/tpu-doc https://github.com/clay-good/tpu-doc/releases/latest/download/tpu-doc-linux-x86_64",
+      "chmod +x /usr/local/bin/tpu-doc",
+      "/usr/local/bin/tpu-doc check --fail-fast"
     ]
 
     connection {
@@ -499,31 +499,31 @@ resource "google_tpu_vm" "training" {
 
 ```bash
 #!/bin/bash
-# run-preflight.sh
+# run-tpu-doc.sh
 # Generic wrapper for CI systems
 
 set -e
 
-PREFLIGHT_BIN="${PREFLIGHT_BIN:-./tpu-preflight}"
+TPU_DOC_BIN="${TPU_DOC_BIN:-./tpu-doc}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
 BASELINE="${BASELINE:-}"
 
-# Run preflight with all output formats
-echo "Running tpu-preflight validation..."
+# Run tpu-doc with all output formats
+echo "Running tpu-doc validation..."
 
 # Generate all output formats
-$PREFLIGHT_BIN check --format text > "$OUTPUT_DIR/results.txt" 2>&1 || true
-$PREFLIGHT_BIN check --format json > "$OUTPUT_DIR/results.json"
-$PREFLIGHT_BIN check --format junit > "$OUTPUT_DIR/results.xml"
+$TPU_DOC_BIN check --format text > "$OUTPUT_DIR/results.txt" 2>&1 || true
+$TPU_DOC_BIN check --format json > "$OUTPUT_DIR/results.json"
+$TPU_DOC_BIN check --format junit > "$OUTPUT_DIR/results.xml"
 
 # Get exit code from a clean run
-$PREFLIGHT_BIN check --quiet
+$TPU_DOC_BIN check --quiet
 EXIT_CODE=$?
 
 # Report status
 case $EXIT_CODE in
   0)
-    echo "SUCCESS: All preflight checks passed"
+    echo "SUCCESS: All tpu-doc checks passed"
     ;;
   1)
     echo "FAILURE: One or more checks failed"
@@ -540,7 +540,7 @@ esac
 # Compare to baseline if provided
 if [ -n "$BASELINE" ] && [ -f "$BASELINE" ]; then
   echo "Comparing to baseline: $BASELINE"
-  $PREFLIGHT_BIN check --baseline "$BASELINE" --format json > "$OUTPUT_DIR/comparison.json"
+  $TPU_DOC_BIN check --baseline "$BASELINE" --format json > "$OUTPUT_DIR/comparison.json"
 fi
 
 exit $EXIT_CODE
@@ -550,29 +550,29 @@ exit $EXIT_CODE
 
 ```makefile
 # Makefile
-.PHONY: preflight preflight-ci
+.PHONY: tpu-doc tpu-doc-ci
 
-PREFLIGHT := ./tpu-preflight
+TPU_DOC := ./tpu-doc
 
-preflight:
-	$(PREFLIGHT) check
+tpu-doc-check:
+	$(TPU_DOC) check
 
-preflight-ci:
-	$(PREFLIGHT) check --format junit > results.xml
-	$(PREFLIGHT) check --format json > results.json
+tpu-doc-ci:
+	$(TPU_DOC) check --format junit > results.xml
+	$(TPU_DOC) check --format json > results.json
 
-preflight-strict:
-	$(PREFLIGHT) check --fail-fast
+tpu-doc-strict:
+	$(TPU_DOC) check --fail-fast
 
-preflight-hardware:
-	$(PREFLIGHT) check --hardware --fail-fast
+tpu-doc-hardware:
+	$(TPU_DOC) check --hardware --fail-fast
 ```
 
 ---
 
 ## Best Practices
 
-### When to Run Preflight
+### When to Run TPU Doc
 
 1. **Before every deployment** - Catch issues before they affect production
 2. **After TPU provisioning** - Validate new TPU VMs before use
@@ -593,7 +593,7 @@ preflight-hardware:
 **Conservative (Production)**
 ```bash
 # Treat warnings as failures
-tpu-preflight check
+tpu-doc check
 if [ $? -ne 0 ]; then
   echo "Blocking deployment due to warnings or failures"
   exit 1
@@ -603,7 +603,7 @@ fi
 **Permissive (Development)**
 ```bash
 # Only fail on actual failures
-tpu-preflight check
+tpu-doc check
 if [ $? -eq 1 ] || [ $? -eq 3 ]; then
   echo "Blocking deployment due to failures"
   exit 1
@@ -614,7 +614,7 @@ fi
 
 1. **Generate baseline after known-good state**
    ```bash
-   tpu-preflight check --format json > baseline.json
+   tpu-doc check --format json > baseline.json
    ```
 
 2. **Store baselines in version control or artifact storage**
@@ -627,19 +627,19 @@ fi
 3. **Update baseline after intentional changes**
    ```bash
    # After TPU upgrade, software update, etc.
-   tpu-preflight check --format json > baseline.json
+   tpu-doc check --format json > baseline.json
    ```
 
 4. **Compare against baseline in CI**
    ```bash
-   tpu-preflight check --baseline baseline.json
+   tpu-doc check --baseline baseline.json
    ```
 
 ### Parallel Execution
 
 For faster CI runs on multi-chip TPUs:
 ```bash
-tpu-preflight check --parallel --timeout 60000
+tpu-doc check --parallel --timeout 60000
 ```
 
 ### Selective Checks
@@ -647,10 +647,10 @@ tpu-preflight check --parallel --timeout 60000
 Skip non-essential checks in CI:
 ```bash
 # Skip informational firewall check
-tpu-preflight check --skip SEC-007
+tpu-doc check --skip SEC-007
 
 # Run only critical hardware checks
-tpu-preflight check --hardware --fail-fast
+tpu-doc check --hardware --fail-fast
 ```
 
 ---
@@ -659,16 +659,16 @@ tpu-preflight check --hardware --fail-fast
 
 ### Common Problems
 
-**Problem: Preflight hangs in CI**
+**Problem: TPU Doc hangs in CI**
 ```bash
 # Add timeout to prevent hanging
-timeout 120 ./tpu-preflight check --timeout 60000
+timeout 120 ./tpu-doc check --timeout 60000
 ```
 
 **Problem: Color codes in CI logs**
 ```bash
 # Disable colors
-./tpu-preflight check --no-color
+./tpu-doc check --no-color
 # or
 export NO_COLOR=1
 ```
@@ -676,7 +676,7 @@ export NO_COLOR=1
 **Problem: Permission denied errors**
 ```bash
 # Ensure binary is executable
-chmod +x ./tpu-preflight
+chmod +x ./tpu-doc
 # Check TPU device permissions
 ls -la /dev/accel*
 ```
@@ -684,5 +684,5 @@ ls -la /dev/accel*
 **Problem: Network checks fail in isolated environment**
 ```bash
 # Skip network-dependent checks
-./tpu-preflight check --skip IO-001 --skip IO-003 --skip IO-005
+./tpu-doc check --skip IO-001 --skip IO-003 --skip IO-005
 ```

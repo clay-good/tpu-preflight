@@ -1,8 +1,34 @@
-//! Zero-dependency argument parser for tpu-preflight.
+//! Zero-dependency argument parser for tpu-doc.
 //!
 //! Handles command line argument parsing without external dependencies.
 
 use std::env;
+
+#[cfg(feature = "ai")]
+use crate::ai::AiProvider;
+
+// When ai feature is not enabled, provide a stub
+#[cfg(not(feature = "ai"))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum AiProvider {
+    #[default]
+    Anthropic,
+    Google,
+}
+
+#[cfg(not(feature = "ai"))]
+impl AiProvider {
+    pub fn from_str(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "anthropic" | "claude" => Ok(AiProvider::Anthropic),
+            "google" | "gemini" => Ok(AiProvider::Google),
+            _ => Err(format!(
+                "Unknown AI provider: '{}'. Valid providers: anthropic, google",
+                s
+            )),
+        }
+    }
+}
 
 /// Command to execute
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -14,6 +40,18 @@ pub enum Command {
     Version,
     /// List all available checks
     List,
+    /// Display environment information
+    Info,
+    /// Analyze software stack compatibility
+    Stack,
+    /// Analyze XLA cache
+    Cache,
+    /// Capture resource snapshot
+    Snapshot,
+    /// Run configuration audit
+    Audit,
+    /// AI-powered log analysis
+    Analyze,
 }
 
 /// Output format selection
@@ -55,6 +93,8 @@ pub enum CategoryFilter {
     Io,
     /// Run only security checks
     Security,
+    /// Run only configuration audit checks
+    Config,
 }
 
 /// Parsed command line arguments
@@ -88,6 +128,20 @@ pub struct Args {
     pub baseline: Option<String>,
     /// Show help
     pub help: bool,
+    /// Show compatibility matrix (for stack command)
+    pub show_matrix: bool,
+    /// Continuous refresh interval in seconds (for snapshot command)
+    pub continuous: u32,
+    /// Enable AI-powered analysis (for analyze command)
+    pub ai_enabled: bool,
+    /// AI provider to use
+    pub ai_provider: Option<AiProvider>,
+    /// AI model to use
+    pub ai_model: Option<String>,
+    /// User question for AI analysis
+    pub ai_question: Option<String>,
+    /// Log file path (for analyze command)
+    pub log_file: Option<String>,
 }
 
 impl Default for Args {
@@ -107,6 +161,13 @@ impl Default for Args {
             config: None,
             baseline: None,
             help: false,
+            show_matrix: false,
+            continuous: 0,
+            ai_enabled: false,
+            ai_provider: None,
+            ai_model: None,
+            ai_question: None,
+            log_file: None,
         }
     }
 }
@@ -129,13 +190,13 @@ impl Args {
         }
 
         // Check for environment variable overrides
-        if let Ok(format) = env::var("TPU_PREFLIGHT_FORMAT") {
+        if let Ok(format) = env::var("TPU_DOC_FORMAT") {
             result.format = OutputFormat::from_str(&format)?;
         }
-        if env::var("TPU_PREFLIGHT_VERBOSE").is_ok() {
+        if env::var("TPU_DOC_VERBOSE").is_ok() {
             result.verbose = true;
         }
-        if let Ok(config) = env::var("TPU_PREFLIGHT_CONFIG") {
+        if let Ok(config) = env::var("TPU_DOC_CONFIG") {
             result.config = Some(config);
         }
 
@@ -147,6 +208,12 @@ impl Args {
                 "check" => result.command = Command::Check,
                 "version" => result.command = Command::Version,
                 "list" => result.command = Command::List,
+                "info" => result.command = Command::Info,
+                "stack" => result.command = Command::Stack,
+                "cache" => result.command = Command::Cache,
+                "snapshot" => result.command = Command::Snapshot,
+                "audit" => result.command = Command::Audit,
+                "analyze" => result.command = Command::Analyze,
 
                 // Help flags
                 "-h" | "--help" => result.help = true,
@@ -159,6 +226,7 @@ impl Args {
                 "--performance" => result.category = CategoryFilter::Performance,
                 "--io" => result.category = CategoryFilter::Io,
                 "--security" => result.category = CategoryFilter::Security,
+                "--config-audit" => result.category = CategoryFilter::Config,
 
                 // Skip/only with value
                 "--skip" => {
@@ -184,8 +252,8 @@ impl Args {
                     }
                     result.format = OutputFormat::from_str(&args[i])?;
                 }
-                "--quiet" => result.quiet = true,
-                "--verbose" => result.verbose = true,
+                "-q" | "--quiet" => result.quiet = true,
+                "-v" | "--verbose" => result.verbose = true,
                 "--no-color" => result.no_color = true,
 
                 // Behavior options
@@ -217,6 +285,44 @@ impl Args {
                     result.baseline = Some(args[i].clone());
                 }
 
+                // Stack command options
+                "--matrix" => result.show_matrix = true,
+
+                // Snapshot command options
+                "--continuous" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--continuous requires refresh interval in seconds".to_string());
+                    }
+                    result.continuous = args[i]
+                        .parse()
+                        .map_err(|_| format!("Invalid continuous value: '{}'", args[i]))?;
+                }
+
+                // AI analyze command options
+                "--ai" => result.ai_enabled = true,
+                "--provider" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--provider requires a provider name (anthropic, google)".to_string());
+                    }
+                    result.ai_provider = Some(AiProvider::from_str(&args[i])?);
+                }
+                "--model" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--model requires a model name".to_string());
+                    }
+                    result.ai_model = Some(args[i].clone());
+                }
+                "--question" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--question requires a question string".to_string());
+                    }
+                    result.ai_question = Some(args[i].clone());
+                }
+
                 // Handle --option=value syntax
                 _ if arg.starts_with("--skip=") => {
                     result.skip.push(arg[7..].to_string());
@@ -225,7 +331,8 @@ impl Args {
                     result.only.push(arg[7..].to_string());
                 }
                 _ if arg.starts_with("--format=") => {
-                    result.format = OutputFormat::from_str(&arg[9..])?;
+                    let format = &arg[9..];
+                    result.format = OutputFormat::from_str(format)?;
                 }
                 _ if arg.starts_with("--timeout=") => {
                     result.timeout_ms = arg[10..]
@@ -238,13 +345,32 @@ impl Args {
                 _ if arg.starts_with("--baseline=") => {
                     result.baseline = Some(arg[11..].to_string());
                 }
+                _ if arg.starts_with("--continuous=") => {
+                    result.continuous = arg[13..]
+                        .parse()
+                        .map_err(|_| format!("Invalid continuous value: '{}'", &arg[13..]))?;
+                }
+                _ if arg.starts_with("--provider=") => {
+                    result.ai_provider = Some(AiProvider::from_str(&arg[11..])?);
+                }
+                _ if arg.starts_with("--model=") => {
+                    result.ai_model = Some(arg[8..].to_string());
+                }
+                _ if arg.starts_with("--question=") => {
+                    result.ai_question = Some(arg[11..].to_string());
+                }
 
                 // Unknown argument
                 _ if arg.starts_with('-') => {
                     return Err(format!("Unknown option: '{}'", arg));
                 }
+                // Positional arguments (like log file for analyze command)
                 _ => {
-                    return Err(format!("Unexpected argument: '{}'", arg));
+                    if result.command == Command::Analyze && result.log_file.is_none() {
+                        result.log_file = Some(arg.clone());
+                    } else {
+                        return Err(format!("Unexpected argument: '{}'", arg));
+                    }
                 }
             }
 
@@ -283,9 +409,45 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_info_command() {
+        let args = Args::parse_from(&["info".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Info);
+    }
+
+    #[test]
+    fn test_parse_stack_command() {
+        let args = Args::parse_from(&["stack".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Stack);
+    }
+
+    #[test]
+    fn test_parse_cache_command() {
+        let args = Args::parse_from(&["cache".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Cache);
+    }
+
+    #[test]
+    fn test_parse_snapshot_command() {
+        let args = Args::parse_from(&["snapshot".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Snapshot);
+    }
+
+    #[test]
+    fn test_parse_audit_command() {
+        let args = Args::parse_from(&["audit".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Audit);
+    }
+
+    #[test]
     fn test_parse_category_filter() {
         let args = Args::parse_from(&["--hardware".to_string()]).unwrap();
         assert_eq!(args.category, CategoryFilter::Hardware);
+    }
+
+    #[test]
+    fn test_parse_config_audit_filter() {
+        let args = Args::parse_from(&["--config-audit".to_string()]).unwrap();
+        assert_eq!(args.category, CategoryFilter::Config);
     }
 
     #[test]
@@ -304,6 +466,20 @@ mod tests {
     fn test_parse_timeout_option() {
         let args = Args::parse_from(&["--timeout".to_string(), "60000".to_string()]).unwrap();
         assert_eq!(args.timeout_ms, 60000);
+    }
+
+    #[test]
+    fn test_parse_matrix_option() {
+        let args = Args::parse_from(&["stack".to_string(), "--matrix".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Stack);
+        assert!(args.show_matrix);
+    }
+
+    #[test]
+    fn test_parse_continuous_option() {
+        let args = Args::parse_from(&["snapshot".to_string(), "--continuous".to_string(), "5".to_string()]).unwrap();
+        assert_eq!(args.command, Command::Snapshot);
+        assert_eq!(args.continuous, 5);
     }
 
     #[test]

@@ -259,29 +259,299 @@ impl Default for ResultAggregator {
 }
 
 /// Save a validation report as JSON baseline
-pub fn save_as_baseline(report: &ValidationReport, path: &str) -> Result<(), crate::PreflightError> {
+pub fn save_as_baseline(report: &ValidationReport, path: &str) -> Result<(), crate::TpuDocError> {
     use crate::cli::output::{JsonFormatter, OutputFormatter};
 
     let formatter = JsonFormatter::new(true);
     let json = formatter.format(report);
 
-    std::fs::write(path, json).map_err(|e| crate::PreflightError::IoError {
+    std::fs::write(path, json).map_err(|e| crate::TpuDocError::IoError {
         context: "save_as_baseline".to_string(),
         message: e.to_string(),
     })
 }
 
 /// Load a validation report from JSON baseline
-pub fn load_baseline(path: &str) -> Result<ValidationReport, crate::PreflightError> {
-    let _content = std::fs::read_to_string(path).map_err(|e| crate::PreflightError::IoError {
+pub fn load_baseline(path: &str) -> Result<ValidationReport, crate::TpuDocError> {
+    let content = std::fs::read_to_string(path).map_err(|e| crate::TpuDocError::IoError {
         context: "load_baseline".to_string(),
         message: e.to_string(),
     })?;
 
-    // In a full implementation, we would parse the JSON back into a ValidationReport
-    // For now, return an error since we don't have a JSON parser
-    Err(crate::PreflightError::ParseError {
+    parse_json_report(&content).map_err(|e| crate::TpuDocError::ParseError {
         context: "load_baseline".to_string(),
-        message: "JSON parsing not yet implemented".to_string(),
+        message: e,
     })
+}
+
+/// Parse a JSON string into a ValidationReport
+fn parse_json_report(json: &str) -> Result<ValidationReport, String> {
+    let mut report = ValidationReport::new();
+
+    // Extract timestamp
+    if let Some(ts) = extract_json_number(json, "timestamp") {
+        report.timestamp = ts as u64;
+    }
+
+    // Extract hostname
+    if let Some(hostname) = extract_json_string(json, "hostname") {
+        report.hostname = hostname;
+    }
+
+    // Extract tpu_type
+    report.tpu_type = extract_json_string(json, "tpu_type");
+
+    // Extract total_duration_ms
+    if let Some(duration) = extract_json_number(json, "total_duration_ms") {
+        report.total_duration_ms = duration as u64;
+    }
+
+    // Extract checks array
+    if let Some(checks_start) = json.find("\"checks\"") {
+        if let Some(array_start) = json[checks_start..].find('[') {
+            let array_begin = checks_start + array_start;
+            if let Some(array_end) = find_matching_bracket(&json[array_begin..]) {
+                let checks_json = &json[array_begin..array_begin + array_end + 1];
+                report.checks = parse_checks_array(checks_json)?;
+            }
+        }
+    }
+
+    Ok(report)
+}
+
+/// Extract a string value from JSON by key
+fn extract_json_string(json: &str, key: &str) -> Option<String> {
+    let search = format!("\"{}\"", key);
+    let key_pos = json.find(&search)?;
+    let after_key = &json[key_pos + search.len()..];
+
+    // Skip whitespace and colon
+    let colon_pos = after_key.find(':')?;
+    let after_colon = &after_key[colon_pos + 1..];
+
+    // Find opening quote
+    let quote_start = after_colon.find('"')?;
+    let value_start = &after_colon[quote_start + 1..];
+
+    // Find closing quote (handle escaped quotes)
+    let mut end = 0;
+    let mut escaped = false;
+    for (i, c) in value_start.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            end = i;
+            break;
+        }
+    }
+
+    let value = &value_start[..end];
+    Some(unescape_json_string(value))
+}
+
+/// Extract a number value from JSON by key
+fn extract_json_number(json: &str, key: &str) -> Option<f64> {
+    let search = format!("\"{}\"", key);
+    let key_pos = json.find(&search)?;
+    let after_key = &json[key_pos + search.len()..];
+
+    // Skip whitespace and colon
+    let colon_pos = after_key.find(':')?;
+    let after_colon = after_key[colon_pos + 1..].trim_start();
+
+    // Extract number
+    let end = after_colon
+        .find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+        .unwrap_or(after_colon.len());
+
+    after_colon[..end].parse().ok()
+}
+
+/// Find the matching closing bracket for an array or object
+fn find_matching_bracket(s: &str) -> Option<usize> {
+    let open = s.chars().next()?;
+    let close = match open {
+        '[' => ']',
+        '{' => '}',
+        _ => return None,
+    };
+
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (i, c) in s.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' && in_string {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// Parse the checks array from JSON
+fn parse_checks_array(json: &str) -> Result<Vec<crate::Check>, String> {
+    let mut checks = Vec::new();
+
+    // Find each object in the array
+    let mut pos = 1; // Skip opening bracket
+    while pos < json.len() {
+        // Find next object start
+        if let Some(obj_start) = json[pos..].find('{') {
+            let obj_begin = pos + obj_start;
+            if let Some(obj_end) = find_matching_bracket(&json[obj_begin..]) {
+                let check_json = &json[obj_begin..obj_begin + obj_end + 1];
+                if let Ok(check) = parse_single_check(check_json) {
+                    checks.push(check);
+                }
+                pos = obj_begin + obj_end + 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(checks)
+}
+
+/// Parse a single check object from JSON
+fn parse_single_check(json: &str) -> Result<crate::Check, String> {
+    let id = extract_json_string(json, "id").unwrap_or_default();
+    let name = extract_json_string(json, "name").unwrap_or_default();
+    let description = extract_json_string(json, "description").unwrap_or_default();
+
+    // Parse category
+    let category_str = extract_json_string(json, "category").unwrap_or_default();
+    let category = match category_str.to_lowercase().as_str() {
+        "hardware" => crate::CheckCategory::Hardware,
+        "stack" => crate::CheckCategory::Stack,
+        "performance" => crate::CheckCategory::Performance,
+        "io" => crate::CheckCategory::Io,
+        "security" => crate::CheckCategory::Security,
+        "config" => crate::CheckCategory::Config,
+        _ => crate::CheckCategory::Hardware,
+    };
+
+    // Parse result
+    let result = parse_check_result(json);
+
+    Ok(crate::Check {
+        id,
+        name,
+        category,
+        description,
+        result,
+    })
+}
+
+/// Parse the result field from a check JSON object
+fn parse_check_result(json: &str) -> Option<crate::CheckResult> {
+    // Find the result object
+    let result_key = json.find("\"result\"")?;
+    let after_key = &json[result_key..];
+
+    // Check for null
+    if after_key.contains("\"result\": null") || after_key.contains("\"result\":null") {
+        return None;
+    }
+
+    // Find the result object
+    let obj_start = after_key.find('{')?;
+    let result_json = &after_key[obj_start..];
+    let obj_end = find_matching_bracket(result_json)?;
+    let result_obj = &result_json[..obj_end + 1];
+
+    // Determine result type by looking for status field
+    let status = extract_json_string(result_obj, "status")?;
+
+    match status.to_lowercase().as_str() {
+        "pass" => {
+            let message = extract_json_string(result_obj, "message").unwrap_or_default();
+            let duration_ms = extract_json_number(result_obj, "duration_ms").unwrap_or(0.0) as u64;
+            Some(crate::CheckResult::Pass { message, duration_ms })
+        }
+        "warn" => {
+            let message = extract_json_string(result_obj, "message").unwrap_or_default();
+            let details = extract_json_string(result_obj, "details").unwrap_or_default();
+            let duration_ms = extract_json_number(result_obj, "duration_ms").unwrap_or(0.0) as u64;
+            Some(crate::CheckResult::Warn { message, details, duration_ms })
+        }
+        "fail" => {
+            let message = extract_json_string(result_obj, "message").unwrap_or_default();
+            let details = extract_json_string(result_obj, "details").unwrap_or_default();
+            let duration_ms = extract_json_number(result_obj, "duration_ms").unwrap_or(0.0) as u64;
+            Some(crate::CheckResult::Fail { message, details, duration_ms })
+        }
+        "skip" => {
+            let reason = extract_json_string(result_obj, "reason").unwrap_or_default();
+            Some(crate::CheckResult::Skip { reason })
+        }
+        _ => None,
+    }
+}
+
+/// Unescape a JSON string value
+fn unescape_json_string(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(&next) = chars.peek() {
+                chars.next();
+                match next {
+                    '"' => result.push('"'),
+                    '\\' => result.push('\\'),
+                    'n' => result.push('\n'),
+                    'r' => result.push('\r'),
+                    't' => result.push('\t'),
+                    'u' => {
+                        // Unicode escape
+                        let hex: String = chars.by_ref().take(4).collect();
+                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = char::from_u32(code) {
+                                result.push(ch);
+                            }
+                        }
+                    }
+                    _ => {
+                        result.push('\\');
+                        result.push(next);
+                    }
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }

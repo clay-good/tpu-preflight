@@ -1,11 +1,11 @@
 # Development Guide
 
-Guide for developing and contributing to tpu-preflight.
+Guide for developing and contributing to tpu-doc.
 
 ## Project Structure
 
 ```
-tpu-preflight/
+tpu-doc/
 ├── Cargo.toml              # Project manifest
 ├── Cargo.lock              # Dependency lock file
 ├── build.rs                # Build script (version info, libtpu detection)
@@ -76,8 +76,8 @@ source $HOME/.cargo/env
 
 ```bash
 # Clone repository
-git clone https://github.com/clay-good/tpu-preflight.git
-cd tpu-preflight
+git clone https://github.com/clay-good/tpu-doc.git
+cd tpu-doc
 
 # Debug build (fast compilation, includes debug symbols)
 cargo build
@@ -378,7 +378,7 @@ pub fn is_trainium_vm() -> bool {
 }
 
 /// Get Trainium device count
-pub fn get_neuron_device_count() -> Result<u32, PreflightError> {
+pub fn get_neuron_device_count() -> Result<u32, TpuDocError> {
     // Implementation
 }
 ```
@@ -520,10 +520,10 @@ git commit -m "Bump version to 0.2.0"
 cargo build --release
 
 # Binary location
-ls -la target/release/tpu-preflight
+ls -la target/release/tpu-doc
 
 # Check binary size
-du -h target/release/tpu-preflight
+du -h target/release/tpu-doc
 ```
 
 ### Creating Release Artifacts
@@ -533,11 +533,11 @@ du -h target/release/tpu-preflight
 mkdir -p release
 
 # Copy binary
-cp target/release/tpu-preflight release/tpu-preflight-linux-x86_64
+cp target/release/tpu-doc release/tpu-doc-linux-x86_64
 
 # Generate checksums
 cd release
-sha256sum tpu-preflight-* > SHA256SUMS
+sha256sum tpu-doc-* > SHA256SUMS
 ```
 
 ### Tagging Release
@@ -561,7 +561,7 @@ git push origin v0.2.0
 cargo build
 
 # Run with debug output
-RUST_BACKTRACE=1 ./target/debug/tpu-preflight check --verbose
+RUST_BACKTRACE=1 ./target/debug/tpu-doc check --verbose
 ```
 
 ### Logging
@@ -586,7 +586,7 @@ eprintln!("Debug: value = {:?}", value);
 
 **Binary too large**
 - Ensure release profile optimizations are enabled
-- Check for debug symbols: `file target/release/tpu-preflight`
+- Check for debug symbols: `file target/release/tpu-doc`
 
 ---
 
@@ -596,27 +596,27 @@ eprintln!("Debug: value = {:?}", value);
 
 ```bash
 # Create TPU VM
-gcloud compute tpus tpu-vm create preflight-test \
+gcloud compute tpus tpu-vm create tpu-doc-test \
   --zone=us-east5-a \
   --accelerator-type=v5litepod-8 \
   --version=v2-alpha-tpuv5-lite
 
 # Copy binary
 gcloud compute tpus tpu-vm scp \
-  target/release/tpu-preflight \
-  preflight-test:~/ \
+  target/release/tpu-doc \
+  tpu-doc-test:~/ \
   --zone=us-east5-a
 
 # SSH and test
-gcloud compute tpus tpu-vm ssh preflight-test --zone=us-east5-a
-./tpu-preflight check --verbose
+gcloud compute tpus tpu-vm ssh tpu-doc-test --zone=us-east5-a
+./tpu-doc check --verbose
 ```
 
 ### Cleanup
 
 ```bash
 # Delete test TPU
-gcloud compute tpus tpu-vm delete preflight-test --zone=us-east5-a
+gcloud compute tpus tpu-vm delete tpu-doc-test --zone=us-east5-a
 ```
 
 ---

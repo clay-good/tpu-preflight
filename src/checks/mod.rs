@@ -6,6 +6,7 @@
 //! - Performance: Performance baseline checks
 //! - I/O: Storage and network throughput checks
 //! - Security: Security posture checks
+//! - Config: Configuration audit checks
 //!
 //! # Graceful Degradation
 //!
@@ -19,6 +20,7 @@
 //! Checks never panic. All error conditions are converted to appropriate
 //! CheckResult variants for the caller to handle.
 
+pub mod config;
 pub mod hardware;
 pub mod io;
 pub mod performance;
@@ -35,6 +37,7 @@ pub fn get_all_checks() -> Vec<Check> {
     checks.extend(performance::get_performance_checks());
     checks.extend(io::get_io_checks());
     checks.extend(security::get_security_checks());
+    checks.extend(config::get_config_checks());
     checks
 }
 
@@ -46,5 +49,6 @@ pub fn get_checks_by_category(category: CheckCategory) -> Vec<Check> {
         CheckCategory::Performance => performance::get_performance_checks(),
         CheckCategory::Io => io::get_io_checks(),
         CheckCategory::Security => security::get_security_checks(),
+        CheckCategory::Config => config::get_config_checks(),
     }
 }

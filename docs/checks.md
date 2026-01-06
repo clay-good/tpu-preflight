@@ -1,6 +1,6 @@
 # Check Reference
 
-Complete reference documentation for all tpu-preflight validation checks.
+Complete reference documentation for all tpu-doc validation checks.
 
 ## Summary Table
 
@@ -37,6 +37,11 @@ Complete reference documentation for all tpu-preflight validation checks.
 | SEC-005 | Instance Metadata Access | Security | Verify metadata server access configuration |
 | SEC-006 | SSH Key Management | Security | Check for OS Login vs legacy SSH keys |
 | SEC-007 | Firewall Rules | Security | Provide guidance on firewall configuration |
+| CFG-001 | XLA Flags Audit | Configuration | Check XLA_FLAGS for anti-patterns |
+| CFG-002 | JAX Configuration | Configuration | Audit JAX configuration settings |
+| CFG-003 | Memory Preallocation | Configuration | Check memory preallocation settings |
+| CFG-004 | Distributed Configuration | Configuration | Verify multi-host coordinator setup |
+| CFG-005 | Logging Configuration | Configuration | Check logging level settings |
 
 ---
 
@@ -1319,3 +1324,209 @@ Provides guidance on firewall configuration (cannot check from instance).
 - Review firewall rules in GCP Console
 - Use `gcloud compute firewall-rules list`
 - Ensure only required ports are open
+
+---
+
+## Configuration Checks
+
+### CFG-001: XLA Flags Audit
+
+**Category:** Configuration
+**Estimated Duration:** <1 second
+**Dependencies:** None
+
+**Description:**
+Parses and audits XLA_FLAGS environment variable for known anti-patterns or suboptimal settings.
+
+**What It Validates:**
+- No debug flags in production
+- No disabled optimizations
+- Reasonable flag combinations
+
+**Method:**
+1. Parse XLA_FLAGS environment variable
+2. Check for known problematic flags
+3. Report findings
+
+**Pass Criteria:**
+- No problematic flags detected
+- Message: "XLA flags configuration is optimal"
+
+**Warning Criteria:**
+- Debug or suboptimal flags detected
+- Message: "XLA flags may impact performance: {flags}"
+
+**Fail Criteria:**
+- N/A (configuration issues are warnings)
+
+**Skip Conditions:**
+- XLA_FLAGS not set (common, not an issue)
+
+**Troubleshooting:**
+- Review XLA_FLAGS value
+- Remove debug flags for production
+- Consult XLA documentation for flag meanings
+
+---
+
+### CFG-002: JAX Configuration
+
+**Category:** Configuration
+**Estimated Duration:** <1 second
+**Dependencies:** STK-001 (JAX version)
+
+**Description:**
+Audits JAX configuration values for optimization opportunities.
+
+**What It Validates:**
+- x64 mode settings
+- Default matmul precision
+- Memory preallocation settings
+- Other JAX config values
+
+**Method:**
+1. Query JAX configuration via Python subprocess
+2. Check for suboptimal settings
+3. Report recommendations
+
+**Pass Criteria:**
+- JAX configuration is reasonable
+- Message: "JAX configuration is reasonable"
+
+**Warning Criteria:**
+- Suboptimal settings detected
+- Message: "JAX configuration may be suboptimal: {issues}"
+
+**Fail Criteria:**
+- N/A (configuration issues are warnings)
+
+**Skip Conditions:**
+- JAX not installed
+- Cannot query JAX config
+
+**Troubleshooting:**
+- Review jax.config values
+- Set appropriate precision for workload
+- Consider memory preallocation settings
+
+---
+
+### CFG-003: Memory Preallocation
+
+**Category:** Configuration
+**Estimated Duration:** <1 second
+**Dependencies:** None
+
+**Description:**
+Checks XLA memory preallocation settings for optimal configuration.
+
+**What It Validates:**
+- XLA_PYTHON_CLIENT_PREALLOCATE setting
+- XLA_PYTHON_CLIENT_MEM_FRACTION setting
+- Memory configuration appropriateness
+
+**Method:**
+1. Check XLA_PYTHON_CLIENT_PREALLOCATE environment variable
+2. Check XLA_PYTHON_CLIENT_MEM_FRACTION environment variable
+3. Report configuration status
+
+**Pass Criteria:**
+- Memory settings are configured
+- Message: "Memory preallocation configured: {settings}"
+
+**Warning Criteria:**
+- Using default settings (may not be optimal)
+- Message: "Using default memory preallocation settings"
+
+**Fail Criteria:**
+- N/A (configuration issues are warnings)
+
+**Skip Conditions:**
+- None (always runs)
+
+**Troubleshooting:**
+- Set XLA_PYTHON_CLIENT_PREALLOCATE=true for stable memory
+- Adjust XLA_PYTHON_CLIENT_MEM_FRACTION for memory limits
+- Consider workload requirements
+
+---
+
+### CFG-004: Distributed Configuration
+
+**Category:** Configuration
+**Estimated Duration:** <1 second
+**Dependencies:** HW-001 (TPU detection)
+
+**Description:**
+Verifies distributed/multi-host coordinator configuration for multi-host TPU setups.
+
+**What It Validates:**
+- JAX_COORDINATOR_ADDRESS is set (multi-host)
+- CLOUD_TPU_TASK_ID is set (multi-host)
+- Coordinator is reachable
+
+**Method:**
+1. Check if multi-host configuration
+2. Verify coordinator environment variables
+3. Check coordinator connectivity if applicable
+
+**Pass Criteria:**
+- Single-host: no distributed config needed
+- Multi-host: coordinator properly configured
+- Message: "Distributed configuration OK" or "Single-host configuration"
+
+**Warning Criteria:**
+- Multi-host without coordinator config
+- Message: "Multi-host detected but coordinator not configured"
+
+**Fail Criteria:**
+- Coordinator misconfigured
+- Message: "Distributed configuration error: {error}"
+
+**Skip Conditions:**
+- Not on TPU VM
+
+**Troubleshooting:**
+- Set JAX_COORDINATOR_ADDRESS for multi-host
+- Set CLOUD_TPU_TASK_ID for each worker
+- Verify network connectivity between hosts
+
+---
+
+### CFG-005: Logging Configuration
+
+**Category:** Configuration
+**Estimated Duration:** <1 second
+**Dependencies:** None
+
+**Description:**
+Checks logging configuration for production appropriateness.
+
+**What It Validates:**
+- TF_CPP_MIN_LOG_LEVEL setting
+- JAX_DEBUG_NANS setting
+- Other debug logging flags
+
+**Method:**
+1. Check TF_CPP_MIN_LOG_LEVEL environment variable
+2. Check JAX_DEBUG_NANS environment variable
+3. Check for other debug flags
+
+**Pass Criteria:**
+- Production-appropriate logging configuration
+- Message: "Logging configuration is production-appropriate"
+
+**Warning Criteria:**
+- Debug logging enabled (performance impact)
+- Message: "Debug logging enabled: {flags}"
+
+**Fail Criteria:**
+- N/A (logging issues are warnings)
+
+**Skip Conditions:**
+- None (always runs)
+
+**Troubleshooting:**
+- Set TF_CPP_MIN_LOG_LEVEL=2 to reduce logging
+- Disable JAX_DEBUG_NANS in production
+- Review logging settings for performance impact

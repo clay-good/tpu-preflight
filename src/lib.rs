@@ -1,23 +1,30 @@
-//! tpu-preflight library
+//! tpu-doc library
 //!
-//! Pre-deployment validation tool for Google Cloud TPU environments.
+//! TPU environment diagnostics, discovery, and troubleshooting tool.
 //!
-//! This library provides the core functionality for validating TPU environments
-//! before production deployment. It checks hardware health, software stack
-//! compatibility, performance baselines, I/O throughput, and security posture.
+//! This library provides comprehensive functionality for TPU environments:
+//! - Validation checks for hardware health, software stack, performance, I/O, and security
+//! - Environment discovery and fingerprinting
+//! - XLA cache analysis
+//! - Resource utilization snapshots
+//! - Configuration auditing
+//! - AI-powered log analysis (optional, requires "ai" feature)
 //!
 //! # Example
 //!
 //! ```no_run
-//! use tpu_preflight::{run_preflight, PreflightConfig};
+//! use tpu_doc::{run_checks, TpuDocConfig};
 //!
-//! let config = PreflightConfig::default();
-//! let report = run_preflight(config).expect("Validation failed");
+//! let config = TpuDocConfig::default();
+//! let report = run_checks(config).expect("Validation failed");
 //! println!("Checks passed: {}", report.summary().passed);
 //! ```
 
+pub mod ai;
 pub mod checks;
 pub mod cli;
+pub mod commands;
+pub mod data;
 pub mod engine;
 pub mod platform;
 pub mod version;
@@ -85,6 +92,8 @@ pub enum CheckCategory {
     Io,
     /// Security posture checks (IAM, network exposure)
     Security,
+    /// Configuration audit checks (XLA flags, JAX config)
+    Config,
 }
 
 impl fmt::Display for CheckCategory {
@@ -95,6 +104,7 @@ impl fmt::Display for CheckCategory {
             CheckCategory::Performance => write!(f, "Performance"),
             CheckCategory::Io => write!(f, "I/O"),
             CheckCategory::Security => write!(f, "Security"),
+            CheckCategory::Config => write!(f, "Config"),
         }
     }
 }
@@ -126,9 +136,9 @@ impl Default for Check {
     }
 }
 
-/// Error types for preflight operations.
+/// Error types for tpu-doc operations.
 #[derive(Debug, Clone)]
-pub enum PreflightError {
+pub enum TpuDocError {
     /// Not running on a TPU VM
     NotOnTpu,
     /// Permission denied for a resource
@@ -155,38 +165,46 @@ pub enum PreflightError {
         check_id: String,
         reason: String,
     },
+    /// Command error
+    CommandError {
+        command: String,
+        message: String,
+    },
 }
 
-impl fmt::Display for PreflightError {
+impl fmt::Display for TpuDocError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PreflightError::NotOnTpu => {
+            TpuDocError::NotOnTpu => {
                 write!(f, "Not running on a TPU VM")
             }
-            PreflightError::PermissionDenied { resource } => {
+            TpuDocError::PermissionDenied { resource } => {
                 write!(f, "Permission denied: {}", resource)
             }
-            PreflightError::Timeout { operation, timeout_ms } => {
+            TpuDocError::Timeout { operation, timeout_ms } => {
                 write!(f, "Timeout after {}ms: {}", timeout_ms, operation)
             }
-            PreflightError::IoError { context, message } => {
+            TpuDocError::IoError { context, message } => {
                 write!(f, "I/O error in {}: {}", context, message)
             }
-            PreflightError::ParseError { context, message } => {
+            TpuDocError::ParseError { context, message } => {
                 write!(f, "Parse error in {}: {}", context, message)
             }
-            PreflightError::CheckFailed { check_id, reason } => {
+            TpuDocError::CheckFailed { check_id, reason } => {
                 write!(f, "Check {} failed: {}", check_id, reason)
+            }
+            TpuDocError::CommandError { command, message } => {
+                write!(f, "Command '{}' error: {}", command, message)
             }
         }
     }
 }
 
-impl std::error::Error for PreflightError {}
+impl std::error::Error for TpuDocError {}
 
-/// Configuration for running preflight checks.
+/// Configuration for running validation checks.
 #[derive(Debug, Clone)]
-pub struct PreflightConfig {
+pub struct TpuDocConfig {
     /// Categories to run (None = all)
     pub categories: Option<Vec<CheckCategory>>,
     /// Specific checks to skip (by ID)
@@ -201,9 +219,9 @@ pub struct PreflightConfig {
     pub timeout_ms: u64,
 }
 
-impl Default for PreflightConfig {
+impl Default for TpuDocConfig {
     fn default() -> Self {
-        PreflightConfig {
+        TpuDocConfig {
             categories: None,
             skip_checks: Vec::new(),
             only_checks: Vec::new(),
@@ -214,7 +232,7 @@ impl Default for PreflightConfig {
     }
 }
 
-impl PreflightConfig {
+impl TpuDocConfig {
     /// Create configuration from command line arguments
     pub fn from_args(args: &Args) -> Self {
         let categories = match args.category {
@@ -224,9 +242,10 @@ impl PreflightConfig {
             CategoryFilter::Performance => Some(vec![CheckCategory::Performance]),
             CategoryFilter::Io => Some(vec![CheckCategory::Io]),
             CategoryFilter::Security => Some(vec![CheckCategory::Security]),
+            CategoryFilter::Config => Some(vec![CheckCategory::Config]),
         };
 
-        PreflightConfig {
+        TpuDocConfig {
             categories,
             skip_checks: args.skip.clone(),
             only_checks: args.only.clone(),
@@ -237,7 +256,7 @@ impl PreflightConfig {
     }
 }
 
-/// Run preflight validation checks.
+/// Run validation checks.
 ///
 /// This is the main entry point for running validation checks.
 ///
@@ -248,20 +267,20 @@ impl PreflightConfig {
 /// # Returns
 ///
 /// Returns a `ValidationReport` containing results of all executed checks,
-/// or a `PreflightError` if there was a problem running the checks.
+/// or a `TpuDocError` if there was a problem running the checks.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use tpu_preflight::{run_preflight, PreflightConfig, CheckCategory};
+/// use tpu_doc::{run_checks, TpuDocConfig, CheckCategory};
 ///
 /// // Run only hardware checks
-/// let config = PreflightConfig {
+/// let config = TpuDocConfig {
 ///     categories: Some(vec![CheckCategory::Hardware]),
 ///     ..Default::default()
 /// };
 ///
-/// match run_preflight(config) {
+/// match run_checks(config) {
 ///     Ok(report) => {
 ///         let summary = report.summary();
 ///         println!("Passed: {}, Failed: {}", summary.passed, summary.failed);
@@ -269,7 +288,7 @@ impl PreflightConfig {
 ///     Err(e) => eprintln!("Error: {}", e),
 /// }
 /// ```
-pub fn run_preflight(config: PreflightConfig) -> Result<ValidationReport, PreflightError> {
+pub fn run_checks(config: TpuDocConfig) -> Result<ValidationReport, TpuDocError> {
     // Create orchestrator
     let orch_config = OrchestratorConfig {
         parallel: config.parallel,
@@ -291,12 +310,11 @@ pub fn run_preflight(config: PreflightConfig) -> Result<ValidationReport, Prefli
         // Run all except skipped
         orchestrator.run_excluding(&config.skip_checks)
     } else if let Some(ref categories) = config.categories {
-        // Run specific categories
-        // For simplicity, run first category only (could be enhanced to run multiple)
-        if let Some(category) = categories.first() {
-            orchestrator.run_category(category.clone())
-        } else {
+        // Run specific categories (supports multiple)
+        if categories.is_empty() {
             orchestrator.run_all()
+        } else {
+            orchestrator.run_categories(categories)
         }
     } else {
         // Run all checks
@@ -304,4 +322,10 @@ pub fn run_preflight(config: PreflightConfig) -> Result<ValidationReport, Prefli
     };
 
     Ok(report)
+}
+
+/// Alias for run_checks (for backward compatibility)
+#[deprecated(since = "0.2.0", note = "Use run_checks instead")]
+pub fn run_validation(config: TpuDocConfig) -> Result<ValidationReport, TpuDocError> {
+    run_checks(config)
 }

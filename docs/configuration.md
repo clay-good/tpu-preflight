@@ -1,13 +1,13 @@
 # Configuration Reference
 
-Complete reference for all tpu-preflight configuration options.
+Complete reference for all tpu-doc configuration options.
 
 ## Command Line Arguments
 
 ### Commands
 
 ```
-tpu-preflight [COMMAND] [OPTIONS]
+tpu-doc [COMMAND] [OPTIONS]
 ```
 
 | Command | Description |
@@ -41,13 +41,13 @@ Fine-grained control over which checks to run:
 Examples:
 ```bash
 # Skip specific checks
-tpu-preflight check --skip HW-001 --skip SEC-007
+tpu-doc check --skip HW-001 --skip SEC-007
 
 # Run only specific checks
-tpu-preflight check --only HW-001 --only HW-002
+tpu-doc check --only HW-001 --only HW-002
 
 # Using equals syntax
-tpu-preflight check --skip=HW-001 --skip=SEC-007
+tpu-doc check --skip=HW-001 --skip=SEC-007
 ```
 
 ### Output Options
@@ -62,16 +62,16 @@ tpu-preflight check --skip=HW-001 --skip=SEC-007
 Examples:
 ```bash
 # JSON output for programmatic use
-tpu-preflight check --format json > results.json
+tpu-doc check --format json > results.json
 
 # JUnit XML for CI/CD integration
-tpu-preflight check --format junit > results.xml
+tpu-doc check --format junit > results.xml
 
 # Quiet mode for scripts
-tpu-preflight check --quiet
+tpu-doc check --quiet
 
 # Verbose mode for debugging
-tpu-preflight check --verbose
+tpu-doc check --verbose
 ```
 
 ### Behavior Options
@@ -85,13 +85,13 @@ tpu-preflight check --verbose
 Examples:
 ```bash
 # Increase timeout to 60 seconds
-tpu-preflight check --timeout 60000
+tpu-doc check --timeout 60000
 
 # Run checks in parallel for faster execution
-tpu-preflight check --parallel
+tpu-doc check --parallel
 
 # Stop immediately on first failure
-tpu-preflight check --fail-fast
+tpu-doc check --fail-fast
 ```
 
 ### Configuration File Options
@@ -104,10 +104,10 @@ tpu-preflight check --fail-fast
 Examples:
 ```bash
 # Use configuration file
-tpu-preflight check --config /etc/tpu-preflight/config.toml
+tpu-doc check --config /etc/tpu-doc/config.toml
 
 # Compare against baseline
-tpu-preflight check --baseline /var/lib/tpu-preflight/baseline.json
+tpu-doc check --baseline /var/lib/tpu-doc/baseline.json
 ```
 
 ### Help and Version
@@ -121,23 +121,23 @@ tpu-preflight check --baseline /var/lib/tpu-preflight/baseline.json
 
 ## Configuration File Format
 
-tpu-preflight supports TOML configuration files for persistent settings.
+tpu-doc supports TOML configuration files for persistent settings.
 
 ### File Location
 
 Configuration files can be specified via:
 1. `--config <FILE>` command line option
-2. `TPU_PREFLIGHT_CONFIG` environment variable
+2. `TPU_DOC_CONFIG` environment variable
 3. Default locations (checked in order):
-   - `./tpu-preflight.toml`
-   - `~/.config/tpu-preflight/config.toml`
-   - `/etc/tpu-preflight/config.toml`
+   - `./tpu-doc.toml`
+   - `~/.config/tpu-doc/config.toml`
+   - `/etc/tpu-doc/config.toml`
 
 ### Complete Configuration Example
 
 ```toml
-# tpu-preflight.toml
-# Configuration file for tpu-preflight validation tool
+# tpu-doc.toml
+# Configuration file for tpu-doc validation tool
 
 [checks]
 # Checks to skip (by ID)
@@ -282,15 +282,15 @@ Baseline comparison settings:
 
 ## Environment Variables
 
-tpu-preflight respects the following environment variables:
+tpu-doc respects the following environment variables:
 
 ### Tool Configuration
 
 | Variable | Description |
 |----------|-------------|
-| `TPU_PREFLIGHT_CONFIG` | Path to configuration file |
-| `TPU_PREFLIGHT_FORMAT` | Default output format (text, json, junit) |
-| `TPU_PREFLIGHT_VERBOSE` | Enable verbose output (set to any value) |
+| `TPU_DOC_CONFIG` | Path to configuration file |
+| `TPU_DOC_FORMAT` | Default output format (text, json, junit) |
+| `TPU_DOC_VERBOSE` | Enable verbose output (set to any value) |
 | `NO_COLOR` | Disable colored output (standard convention) |
 
 ### TPU Environment
@@ -319,19 +319,19 @@ These environment variables affect check behavior:
 
 ```bash
 # Set default format to JSON
-export TPU_PREFLIGHT_FORMAT=json
+export TPU_DOC_FORMAT=json
 
 # Enable verbose output
-export TPU_PREFLIGHT_VERBOSE=1
+export TPU_DOC_VERBOSE=1
 
 # Disable colors
 export NO_COLOR=1
 
 # Set configuration file
-export TPU_PREFLIGHT_CONFIG=/etc/tpu-preflight/config.toml
+export TPU_DOC_CONFIG=/etc/tpu-doc/config.toml
 
 # Run with environment configuration
-tpu-preflight check
+tpu-doc check
 ```
 
 ---
@@ -344,14 +344,14 @@ Baseline files store validation results for comparison across runs.
 
 ```bash
 # Generate baseline from current run
-tpu-preflight check --format json > baseline.json
+tpu-doc check --format json > baseline.json
 ```
 
 ### Comparing Against Baseline
 
 ```bash
 # Compare current results to baseline
-tpu-preflight check --baseline baseline.json
+tpu-doc check --baseline baseline.json
 ```
 
 ### Baseline File Format
@@ -410,9 +410,9 @@ When the same setting is specified in multiple places, the following precedence 
 Example:
 ```bash
 # Config file sets format=text
-# Environment sets TPU_PREFLIGHT_FORMAT=json
+# Environment sets TPU_DOC_FORMAT=json
 # Command line wins with --format=junit
-tpu-preflight check --format junit  # Uses junit
+tpu-doc check --format junit  # Uses junit
 ```
 
 ---
@@ -435,7 +435,7 @@ skip = ["SEC-007"]  # Skip informational firewall check
 ```
 
 ```bash
-tpu-preflight check --config ci-config.toml > results.xml
+tpu-doc check --config ci-config.toml > results.xml
 ```
 
 ### Production Validation
@@ -459,14 +459,14 @@ global_ms = 60000
 
 ```bash
 # Run only critical hardware checks
-tpu-preflight check --hardware --fail-fast --quiet
+tpu-doc check --hardware --fail-fast --quiet
 ```
 
 ### Comprehensive Audit
 
 ```bash
 # Run all checks with verbose output and baseline comparison
-tpu-preflight check --verbose --baseline last-known-good.json
+tpu-doc check --verbose --baseline last-known-good.json
 ```
 
 ---
@@ -482,7 +482,7 @@ tpu-preflight check --verbose --baseline last-known-good.json
 
 Use exit codes in scripts:
 ```bash
-tpu-preflight check --quiet
+tpu-doc check --quiet
 case $? in
   0) echo "All checks passed" ;;
   1) echo "Failures detected" ;;

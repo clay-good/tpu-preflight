@@ -3,9 +3,9 @@
 //! Tests for complete validation runs, including orchestration,
 //! fail-fast behavior, and result aggregation.
 
-use tpu_preflight::engine::orchestrator::{CheckOrchestrator, OrchestratorConfig, RegisteredCheck};
-use tpu_preflight::engine::result::{ResultAggregator, ValidationReport};
-use tpu_preflight::{Check, CheckCategory, CheckResult, PreflightConfig};
+use tpu_doc::engine::orchestrator::{CheckOrchestrator, OrchestratorConfig, RegisteredCheck};
+use tpu_doc::engine::result::{ResultAggregator, ValidationReport};
+use tpu_doc::{Check, CheckCategory, CheckResult, TpuDocConfig};
 
 // Helper to create a check that always passes
 fn create_passing_check(id: &str, name: &str, category: CheckCategory) -> RegisteredCheck {
@@ -425,11 +425,11 @@ fn test_result_aggregator_to_report() {
     assert_eq!(report.checks.len(), 1);
 }
 
-// PreflightConfig tests
+// TpuDocConfig tests
 
 #[test]
-fn test_preflight_config_default() {
-    let config = PreflightConfig::default();
+fn test_tpu_doc_config_default() {
+    let config = TpuDocConfig::default();
 
     assert!(config.categories.is_none());
     assert!(config.skip_checks.is_empty());
@@ -440,8 +440,8 @@ fn test_preflight_config_default() {
 }
 
 #[test]
-fn test_preflight_config_with_category() {
-    let config = PreflightConfig {
+fn test_tpu_doc_config_with_category() {
+    let config = TpuDocConfig {
         categories: Some(vec![CheckCategory::Hardware]),
         ..Default::default()
     };
@@ -451,8 +451,8 @@ fn test_preflight_config_with_category() {
 }
 
 #[test]
-fn test_preflight_config_with_skip() {
-    let config = PreflightConfig {
+fn test_tpu_doc_config_with_skip() {
+    let config = TpuDocConfig {
         skip_checks: vec!["HW-001".to_string(), "HW-002".to_string()],
         ..Default::default()
     };
@@ -461,8 +461,8 @@ fn test_preflight_config_with_skip() {
 }
 
 #[test]
-fn test_preflight_config_with_only() {
-    let config = PreflightConfig {
+fn test_tpu_doc_config_with_only() {
+    let config = TpuDocConfig {
         only_checks: vec!["IO-006".to_string()],
         ..Default::default()
     };

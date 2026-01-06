@@ -1,327 +1,383 @@
-# tpu-preflight
+# tpu-doc
 
-Pre-deployment validation tool for Google Cloud TPU environments.
+**tpu-doc** is a single-binary diagnostic tool for Google Cloud TPU environments. It validates hardware health, discovers environment configuration, and provides optional AI-powered troubleshooting. Built for ML engineers and infrastructure teams who need reliable TPU deployments without wasting expensive compute time debugging preventable issues.
 
-## Overview
-
-tpu-preflight is a single-binary CLI tool that answers one critical question before production deployment: **"Is this TPU environment ready for production?"**
-
-Infrastructure teams at AI companies spend significant time debugging TPU deployment issues that could have been caught before production. Failed TPU chip detection, incompatible software versions, degraded hardware performance, I/O bottlenecks, and security misconfigurations waste expensive compute time and delay rollouts.
-
-tpu-preflight provides comprehensive pre-deployment validation across five domains: hardware health, software stack compatibility, performance baselines, I/O throughput, and security posture. Run it before deploying inference workloads to catch problems early, not after your production traffic starts failing.
+Run it before deploying workloads. Run it when something breaks. Get answers in seconds.
 
 ## The Problem
 
-When organizations provision TPU capacity, they face a critical validation gap:
+When organizations provision TPU capacity, they face a critical diagnostic gap:
 
-- No standardized way to verify TPU hardware is healthy before deployment
-- No automated check that software versions (JAX, libtpu, XLA) are compatible
-- No baseline performance validation to detect degraded hardware
-- No pre-deployment I/O verification for checkpoint loading
-- No security posture assessment before routing production traffic
+- **No standardized validation** - Is the TPU hardware actually healthy? Are the chips detected? Is HBM available?
+- **Version compatibility mysteries** - Which JAX version works with which libtpu? Will my code run?
+- **Silent performance degradation** - Is the TPU throttling? Are there uncorrectable errors accumulating?
+- **I/O bottlenecks** - Can the VM actually reach GCS at expected speeds? Is DNS working?
+- **Security blind spots** - What permissions does the service account have? What ports are exposed?
+- **Configuration landmines** - Are XLA flags set correctly? Is memory preallocation configured?
+- **Cryptic error messages** - Training crashed. Now what?
 
-Teams cobble together ad-hoc scripts, rely on tribal knowledge, or discover problems only after deployment fails.
+Teams cobble together ad-hoc scripts, rely on tribal knowledge, or discover problems only after deployment fails. Expensive TPU time ($3-10+/hour) is wasted debugging issues that could have been caught automatically.
 
 ## The Solution
 
-tpu-preflight addresses this gap with:
+tpu-doc addresses this with:
 
-- **Single static binary** - Zero runtime dependencies, deploys anywhere
-- **Comprehensive validation** - 31 checks across 5 categories in under 30 seconds
-- **CI/CD native** - JUnit XML output, exit codes, baseline comparison
-- **Read-only and safe** - Never modifies system state, safe for production
-
-## Quick Start
-
-```bash
-# Download the binary (or build from source)
-# ./tpu-preflight
-
-# Run all validation checks
-tpu-preflight
-
-# Run specific category
-tpu-preflight check --hardware
-
-# Output JSON for programmatic use
-tpu-preflight check --format json > results.json
-
-# List all available checks
-tpu-preflight list
-```
-
-## How It Works
-
-tpu-preflight validates TPU environments through five modules:
-
-**Hardware Checks (HW-001 to HW-006)**
-- TPU device detection and chip count verification
-- HBM memory availability and capacity
-- Thermal status monitoring
-- Hardware error counters
-- ICI interconnect status (multi-chip)
-- Driver status and version
-
-**Stack Checks (STK-001 to STK-007)**
-- JAX version compatibility
-- libtpu version validation
-- XLA compiler detection
-- Python version requirements
-- PJRT plugin availability
-- Dependency conflict detection
-- Environment variable verification
-
-**Performance Checks (PERF-001 to PERF-005)**
-- MXU utilization baseline
-- HBM bandwidth measurement
-- Chip-to-chip latency (multi-chip)
-- XLA compilation latency
-- Memory pressure testing
-
-**I/O Checks (IO-001 to IO-006)**
-- GCS read throughput
-- Local disk throughput
-- GCS connectivity
-- Checkpoint directory access
-- Network latency to GCP services
-- DNS resolution
-
-**Security Checks (SEC-001 to SEC-007)**
-- Service account permissions
-- Network exposure audit
-- Workload identity status
-- Encryption configuration
-- Metadata access controls
-- SSH key management
-- Firewall guidance
-
-## System Architecture
-
-```
-+===========================================================================+
-|                              tpu-preflight                                |
-+===========================================================================+
-|                                                                           |
-|  +---------------------------------------------------------------------+  |
-|  |                         CLI Layer                                   |  |
-|  |   Argument Parser  |  Help Generator  |  Version Info               |  |
-|  +---------------------------------------------------------------------+  |
-|                                    |                                      |
-|                                    v                                      |
-|  +---------------------------------------------------------------------+  |
-|  |                    Validation Engine                                |  |
-|  |   Check Orchestrator (dependency resolution, parallel execution)    |  |
-|  |   Result Aggregator (summary statistics, baseline comparison)       |  |
-|  +---------------------------------------------------------------------+  |
-|            |              |              |             |                   |
-|            v              v              v             v                   |
-|  +---------------------------------------------------------------------+  |
-|  |                    Check Modules                                    |  |
-|  |  Hardware | Stack | Performance | I/O | Security                    |  |
-|  +---------------------------------------------------------------------+  |
-|                                    |                                      |
-|                                    v                                      |
-|  +---------------------------------------------------------------------+  |
-|  |                Platform Abstraction Layer                           |  |
-|  |  TPU Device | Linux System | GCP Metadata | Network                 |  |
-|  +---------------------------------------------------------------------+  |
-|                                    |                                      |
-|                                    v                                      |
-|  +---------------------------------------------------------------------+  |
-|  |                    Output Formatters                                |  |
-|  |  Terminal (human-readable) | JSON | JUnit XML                       |  |
-|  +---------------------------------------------------------------------+  |
-+===========================================================================+
-```
-
-## Deterministic Logic
-
-tpu-preflight uses **NO LLMs or AI** for validation. All checks are deterministic:
-
-- Same system state produces same output
-- Fully auditable validation logic
-- No external API calls for decision-making
-- Reproducible results across runs
-
-## CLI Reference
-
-```
-USAGE:
-    tpu-preflight [COMMAND] [OPTIONS]
-
-COMMANDS:
-    check       Run validation checks (default)
-    version     Print version information
-    list        List all available checks
-
-CHECK OPTIONS:
-    --all           Run all checks (default)
-    --hardware      Run hardware health checks only
-    --stack         Run software stack checks only
-    --performance   Run performance baseline checks only
-    --io            Run I/O throughput checks only
-    --security      Run security posture checks only
-    --skip <ID>     Skip specific check by ID (repeatable)
-    --only <ID>     Run only specific check by ID (repeatable)
-
-OUTPUT OPTIONS:
-    --format <FMT>  Output format: text (default), json, junit
-    --quiet         Only output failures and warnings
-    --verbose       Include detailed diagnostic information
-    --no-color      Disable colored output
-
-BEHAVIOR OPTIONS:
-    --timeout <MS>  Global timeout in milliseconds (default: 30000)
-    --parallel      Run checks in parallel where safe
-    --fail-fast     Stop on first failure
-
-CONFIGURATION:
-    --config <FILE>   Load configuration from TOML file
-    --baseline <FILE> Compare against baseline file
-
-EXIT CODES:
-    0   All checks passed
-    1   One or more checks failed
-    2   Warnings only (no failures)
-    3   Runtime error
-```
-
-## Safety Guarantees
-
-tpu-preflight is designed to be safe for production environments:
-
-- **Read-only operations** - Never writes to filesystem (except explicit output), never modifies system configuration, never changes TPU state
-- **No network exfiltration** - Only connects to GCP metadata server and GCP services for connectivity checks
-- **No credential storage** - Uses ambient credentials of the TPU VM, never stores or transmits credentials
-- **Minimal privileges** - Runs with invoking user's privileges, does not require root for most checks
-- **Deterministic behavior** - No randomness, no external dependencies that could change behavior
+- **Single static binary** - Zero runtime dependencies. Copy it to any TPU VM and run it.
+- **36 validation checks** across 6 categories - Hardware, Stack, Performance, I/O, Security, Configuration
+- **Complete environment discovery** - Full fingerprint of TPU type, software versions, and configuration
+- **Optional AI-powered analysis** - Send error logs to Claude or Gemini for diagnosis (bring your own API key)
+- **CI/CD ready** - JUnit XML output, meaningful exit codes, baseline comparison
+- **Read-only and safe** - Never modifies system state. Safe to run in production.
 
 ## Installation
+
+### Download Pre-built Binary
+
+```bash
+# Download latest release
+curl -LO https://github.com/clay-good/tpu-doc/releases/latest/download/tpu-doc-linux-x86_64
+chmod +x tpu-doc-linux-x86_64
+mv tpu-doc-linux-x86_64 /usr/local/bin/tpu-doc
+
+# Verify installation
+tpu-doc version
+```
 
 ### Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/clay-good/tpu-preflight.git
-cd tpu-preflight
-
-# Build release binary
+# Clone and build
+git clone https://github.com/clay-good/tpu-doc.git
+cd tpu-doc
 cargo build --release
 
-# Binary is at target/release/tpu-preflight
-./target/release/tpu-preflight --help
+# Binary at target/release/tpu-doc
+./target/release/tpu-doc --help
+
+# Build with AI features (adds TLS support)
+cargo build --release --features ai
 ```
 
-### Download Binary
+### Requirements
 
-Check the [Releases](https://github.com/clay-good/tpu-preflight/releases) page for pre-built binaries.
+- **To run**: Linux x86_64 or ARM64 (the binary is self-contained)
+- **To build**: Rust 1.70+ and Cargo
+- **For AI features**: API key for Anthropic or Google
 
-## Testing
-
-The project includes comprehensive testing infrastructure that can run without actual TPU hardware.
-
-### Running Tests
+## Quick Start
 
 ```bash
-# Run all tests (unit + integration)
-cargo test
+# Run all validation checks
+tpu-doc check
 
-# Run tests with output
-cargo test -- --nocapture
+# Run only hardware checks
+tpu-doc check --hardware
 
-# Run specific test module
-cargo test cli_tests
-cargo test output_tests
-cargo test full_run_tests
+# Show complete environment information
+tpu-doc info
+
+# Analyze software stack compatibility
+tpu-doc stack
+
+# Check XLA compilation cache
+tpu-doc cache
+
+# Capture resource utilization snapshot
+tpu-doc snapshot
+
+# Run configuration audit
+tpu-doc audit
+
+# AI-powered log analysis (requires --ai flag and API key)
+ANTHROPIC_API_KEY=sk-ant-... tpu-doc analyze training.log --ai
 ```
 
-### Test Categories
+## How It Works
 
-- **Unit tests** - Core library functionality tests
-- **CLI tests** - Argument parsing, category filtering, output format selection
-- **Output tests** - Terminal, JSON, and JUnit XML formatter validation
-- **Full run tests** - Orchestrator execution, result aggregation, exit code handling
+tpu-doc answers three questions:
 
-### Mock Platform Layer
+### 1. Is this TPU environment healthy?
 
-Tests use a mock platform layer (`tests/mocks/platform.rs`) that simulates TPU environments without requiring actual hardware. The mock layer provides:
-
-- Configurable TPU types (v4, v5e, v5p, v6e)
-- Simulated chip counts and health states
-- Mock HBM memory and thermal conditions
-- Simulated GCP metadata and network responses
-- Error injection for testing failure scenarios
-
-Example mock configurations:
-- `MockTpuConfig::healthy_v5e_8()` - Healthy 8-chip v5e pod
-- `MockTpuConfig::thermal_warning()` - TPU with thermal throttling
-- `MockTpuConfig::hbm_errors()` - TPU with HBM memory errors
-
-### Benchmarks
+The `check` command runs 36 validation checks across 6 categories:
 
 ```bash
-# Run performance benchmarks
-cargo bench
+tpu-doc check
 ```
 
-Benchmarks validate:
-- Check execution overhead (< 10ms per check)
-- Output formatting performance (< 100ms for full report)
+```
+================================================================================
+                         TPU-DOC VALIDATION REPORT
+================================================================================
+
+Environment: v5e-8 | 8 chips | 128 GB HBM | us-central2-b
+Timestamp: 2025-01-04T12:00:00Z
+
+--------------------------------------------------------------------------------
+HARDWARE (HW-001 to HW-006)
+--------------------------------------------------------------------------------
+[PASS] HW-001 TPU Device Detection      8 chips detected
+[PASS] HW-002 Chip Count Verification   8/8 chips available
+[PASS] HW-003 HBM Memory Check          128 GB total, 121 GB available
+[PASS] HW-004 Thermal Status            Normal (62C)
+[PASS] HW-005 Hardware Error Counters   0 correctable, 0 uncorrectable
+[PASS] HW-006 ICI Interconnect Status   All links healthy
+
+--------------------------------------------------------------------------------
+SUMMARY: 36 passed, 0 warnings, 0 failed, 0 skipped
+--------------------------------------------------------------------------------
+```
+
+### 2. What exactly is this environment?
+
+The `info`, `stack`, `cache`, and `snapshot` commands provide detailed discovery:
+
+```bash
+tpu-doc info
+```
+
+```
+================================================================================
+                         TPU ENVIRONMENT INFORMATION
+================================================================================
+
+TPU INFORMATION
+---------------
+  TPU Type:        v5e-8
+  Chip Count:      8
+  HBM Capacity:    128 GB
+  Zone:            us-central2-b
+
+SOFTWARE STACK
+--------------
+  Python:          3.10.12
+  JAX:             0.4.35
+  jaxlib:          0.4.35
+  libtpu:          0.1.dev20241028
+  NumPy:           1.26.4
+```
+
+### 3. What is wrong and how do I fix it?
+
+The `audit` command reviews configuration settings:
+
+```bash
+tpu-doc audit
+```
+
+The `analyze` command uses AI to diagnose log files:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... tpu-doc analyze error.log --ai --question "Why is training hanging?"
+```
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                 tpu-doc                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                          CLI Layer                                   │   │
+│  │   Argument Parsing  │  Command Dispatch  │  Help Generation          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                       Command Handlers                               │   │
+│  │   check │ info │ stack │ cache │ snapshot │ audit │ analyze │ list  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         Check Engine                                 │   │
+│  │   Orchestrator  │  Result Aggregator  │  Dependency Resolution       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│           ┌────────────────────────┼────────────────────────┐              │
+│           ▼                        ▼                        ▼              │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐          │
+│  │  Check Modules  │   │Platform Abstrac.│   │ Output Formats  │          │
+│  │  HW│STK│PERF│IO │   │  TPU │ Linux    │   │ Text│JSON│JUnit │          │
+│  │  SEC │ CFG      │   │  GCP │ Network  │   │                 │          │
+│  └─────────────────┘   └─────────────────┘   └─────────────────┘          │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    AI Layer (Optional, feature-gated)                │   │
+│  │          Anthropic Claude  │  Google Gemini  │  Prompt Builder       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Deterministic Logic vs AI
+
+tpu-doc maintains a strict separation:
+
+**Deterministic Core (always available)**
+- All 36 validation checks use deterministic logic
+- Same system state produces same output every time
+- Fully auditable - you can read the source code for every check
+- No network calls for pass/fail decisions
+- Works offline on air-gapped systems
+
+**AI Features (opt-in, requires `--ai` flag)**
+- Only used for the `analyze` command
+- Requires explicit `--ai` flag - never runs automatically
+- Requires your own API key (BYOK) - we don't provide one
+- Never affects pass/fail decisions of validation checks
+- Built separately with `--features ai` to keep base binary small
+
+## CLI Reference
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `check` | Run validation checks (default if no command specified) |
+| `info` | Display complete environment information |
+| `stack` | Analyze software stack compatibility |
+| `cache` | Analyze XLA compilation cache |
+| `snapshot` | Capture resource utilization snapshot |
+| `audit` | Run configuration audit |
+| `analyze` | AI-powered log analysis (requires `--ai`) |
+| `list` | List all available checks |
+| `version` | Print version information |
+
+### Check Command Options
+
+```bash
+# Category filters (can combine multiple)
+tpu-doc check --hardware        # HW-001 to HW-006
+tpu-doc check --stack           # STK-001 to STK-007
+tpu-doc check --performance     # PERF-001 to PERF-005
+tpu-doc check --io              # IO-001 to IO-006
+tpu-doc check --security        # SEC-001 to SEC-007
+tpu-doc check --config-audit    # CFG-001 to CFG-005
+
+# Individual check selection
+tpu-doc check --only HW-001 --only HW-002
+tpu-doc check --skip PERF-001 --skip PERF-002
+
+# Output formats
+tpu-doc check --format text     # Human-readable (default)
+tpu-doc check --format json     # Machine-readable JSON
+tpu-doc check --format junit    # JUnit XML for CI/CD
+
+# Output modifiers
+tpu-doc check --quiet           # Only show failures and warnings
+tpu-doc check --verbose         # Include timing and extra details
+tpu-doc check --no-color        # Disable ANSI colors
+
+# Behavior
+tpu-doc check --timeout 60000   # Timeout in milliseconds
+tpu-doc check --parallel        # Run checks in parallel
+tpu-doc check --fail-fast       # Stop on first failure
+```
+
+### Analyze Command Options
+
+```bash
+# Basic usage (requires --ai flag)
+tpu-doc analyze training.log --ai
+
+# Choose provider
+tpu-doc analyze error.log --ai --provider anthropic  # Default
+tpu-doc analyze error.log --ai --provider google
+
+# Ask specific question
+tpu-doc analyze error.log --ai --question "Why did OOM occur?"
+
+# Specify model
+tpu-doc analyze error.log --ai --model claude-3-haiku-20240307
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed |
+| 1 | One or more checks failed |
+| 2 | Warnings only (no failures) |
+| 3 | Runtime error |
+
+## Safety Guarantees
+
+tpu-doc is designed to be safe for production environments:
+
+### Read-Only Operations
+- **Never writes** to filesystem (except explicit `--output` files)
+- **Never modifies** system configuration
+- **Never changes** TPU state
+- **Never installs** packages or dependencies
+
+### Network Activity
+- **GCP metadata server** (169.254.169.254) - for environment discovery
+- **GCP services** (storage.googleapis.com) - for connectivity checks only
+- **AI API endpoints** - only when `--ai` flag is explicitly used
+
+### Credential Handling
+- Uses ambient credentials of the TPU VM
+- Never stores or transmits system credentials
+- AI API keys read from environment variables, never logged
+- No credential caching
+
+### Minimal Privileges
+- Runs with invoking user's privileges
+- Does not require root for any check
+- No setuid, no capabilities, no privileged operations
 
 ## Limitations
 
-### Critical Limitations
+An honest assessment of what tpu-doc cannot do:
 
-- **Must run on TPU VM** - Cannot validate TPUs remotely; the binary must execute directly on the TPU VM
-- **No actual TPU hardware queries** - Without libtpu FFI bindings, hardware checks rely on environment variables, sysfs entries, and GCP metadata rather than direct TPU API calls
-- **Performance benchmarks require JAX** - PERF-001 through PERF-005 (MXU utilization, HBM bandwidth, chip-to-chip latency, compilation latency, memory pressure) attempt to run via Python/JAX; if JAX is not installed, these checks skip
-- **GCS throughput test requires configuration** - IO-001 skips unless a test GCS bucket is configured
-- **No TOML config file parser** - The --config flag is documented but TOML parsing is not implemented; configuration must be done via CLI flags or environment variables
+### Must Run on TPU VM
+The binary must execute directly on the TPU VM. It cannot validate TPUs remotely or from your laptop. This is by design - it needs access to TPU device files, sysfs entries, and the GCP metadata server.
 
-### Platform Detection Limitations
-
-- **TPU type detection** - Relies on environment variables (TPU_NAME) or GCP metadata; may return "Unknown" on non-standard configurations
-- **HBM memory values are estimates** - Without libtpu, HBM availability is estimated at 95% of theoretical capacity based on TPU type
-- **Thermal readings are synthetic** - If sysfs thermal zones are unavailable, returns assumed normal temperature (65C)
-- **Error counters from environment** - Hardware error counters read from TPU_CORRECTABLE_ERRORS/TPU_UNCORRECTABLE_ERRORS env vars; defaults to 0 if not set
-- **ICI status inferred** - Inter-chip interconnect health is inferred from TPU type, not directly queried
+### Hardware Detection Limitations
+- **TPU type detection** relies on environment variables (`TPU_NAME`) and GCP metadata. May return "Unknown" on non-standard configurations.
+- **HBM memory values** are estimates based on TPU type specs. Without libtpu FFI bindings, we cannot query actual HBM usage.
+- **Thermal readings** are synthetic if sysfs thermal zones are unavailable (returns assumed normal 65°C).
+- **Error counters** read from environment variables. Defaults to 0 if not set by TPU runtime.
+- **ICI status** is inferred from TPU type, not directly queried from hardware.
 
 ### Software Detection Limitations
+- **JAX version detection** requires Python in PATH. Falls back to pip queries, then environment variables.
+- **Performance checks** (PERF-001 to PERF-005) require JAX to be installed. They skip otherwise.
+- **Dependency conflict detection** covers known problematic combinations, not exhaustive scanning.
 
-- **JAX version detection** - Attempts to query JAX via Python import, falls back to pip show, then environment variable; requires Python available in PATH
-- **XLA version detection** - Attempts to query jaxlib version via Python import; falls back to XLA_VERSION environment variable
-- **Dependency conflict detection** - Checks known problematic version combinations (JAX/TensorFlow, NumPy 2.x compatibility, CUDA on TPU); does not perform exhaustive package scanning
-
-### Network and I/O Limitations
-
-- **No TLS/HTTPS inspection** - HTTPS endpoints are checked via TCP connectivity only; cannot verify certificate validity
-- **Disk throughput uses dd** - Local disk test writes a 100MB file to /tmp; may be affected by filesystem caching
-- **GCS connectivity is TCP-only** - Verifies TCP connection to storage.googleapis.com:443 but not actual GCS API access
+### I/O and Network Limitations
+- **GCS throughput test** requires explicit bucket configuration. Skips if not configured.
+- **HTTPS endpoints** are checked via TCP connectivity only. Does not verify TLS certificates.
+- **Disk throughput** uses dd to `/tmp`. May be affected by filesystem caching.
 
 ### Security Check Limitations
+- **IAM policies** cannot be queried from within the VM. Only metadata server scopes are checked.
+- **Firewall rules** cannot be read from within the instance. Informational only.
+- **Multi-host pods** - only validates the local VM, not pod-wide configuration.
 
-- **Cannot query IAM policies** - Service account permissions checked via metadata server scopes only, not actual IAM bindings
-- **Firewall rules informational only** - SEC-007 cannot query VPC firewall rules from within the instance
-- **Metadata protection detection is heuristic** - Checks if metadata server returns 403 without headers, which may not indicate full protection
-
-### Architectural Limitations
-
-- **Parallel execution** - Uses scoped threads for parallel check execution within dependency batches; limited to max 4 concurrent checks per batch
-- **No persistent configuration** - Each run is stateless; baseline comparison requires explicit --baseline flag
-- **macOS/Windows build** - Compiles on non-Linux but most checks will skip or fail due to missing /proc, /sys filesystems
+### AI Features Limitations
+- **Requires API key** - you must provide your own Anthropic or Google API key
+- **Incurs costs** - API usage is billed by the provider
+- **Network required** - cannot work offline
+- **10MB log limit** - larger files are truncated
+- **No conversation memory** - each call is independent
 
 ### What This Tool Does NOT Do
-
-- Does not modify any system state (by design)
-- Does not integrate with GCP APIs (IAM, Compute, etc.) beyond metadata server
-- Does not provide remediation - only detection and reporting
-- Does not replace Google Cloud's TPU health monitoring
-- Does not validate multi-host TPU pod configurations beyond single-VM checks
+- Modify any system state
+- Install or update packages
+- Manage TPU lifecycle (create, delete, start, stop)
+- Replace Google Cloud monitoring
+- Provide real-time continuous monitoring
+- Manage credentials or authentication
+- Work on non-TPU VMs (most checks will skip)
 
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) - System architecture and design
-- [docs/checks.md](docs/checks.md) - Complete check reference (31 checks documented)
-- [docs/configuration.md](docs/configuration.md) - Configuration options and TOML file format
-- [docs/ci-integration.md](docs/ci-integration.md) - CI/CD integration guide (GitHub Actions, GitLab CI, Jenkins, Kubernetes)
-- [docs/development.md](docs/development.md) - Development guide (building, testing, adding checks)
+- [docs/checks.md](docs/checks.md) - Complete reference for all 36 checks
+- [docs/commands.md](docs/commands.md) - Detailed command reference
+- [docs/configuration.md](docs/configuration.md) - Configuration options
+- [docs/ai-integration.md](docs/ai-integration.md) - AI features setup and usage
+- [docs/ci-integration.md](docs/ci-integration.md) - CI/CD integration guide
+- [docs/development.md](docs/development.md) - Development and contribution guide

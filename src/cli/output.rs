@@ -1,4 +1,4 @@
-//! Output formatting for tpu-preflight.
+//! Output formatting for tpu-doc.
 //!
 //! Provides terminal, JSON, and JUnit XML output formatters.
 //!
@@ -70,7 +70,7 @@ impl OutputFormatter for TerminalFormatter {
 
         // Header
         output.push_str("--------------------------------------------------------------------------------\n");
-        output.push_str("tpu-preflight validation report\n");
+        output.push_str("tpu-doc validation report\n");
         output.push_str(&format!("Host: {}\n", report.hostname));
         if let Some(ref tpu_type) = report.tpu_type {
             output.push_str(&format!("TPU Type: {}\n", tpu_type));
@@ -536,7 +536,7 @@ impl OutputFormatter for JunitFormatter {
                 };
 
                 output.push_str(&format!(
-                    "    <testcase name=\"{}\" classname=\"tpu-preflight.{}\" time=\"{:.3}\"",
+                    "    <testcase name=\"{}\" classname=\"tpu-doc.{}\" time=\"{:.3}\"",
                     Self::escape_xml(&check.id),
                     suite_name,
                     time as f64 / 1000.0

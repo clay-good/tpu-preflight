@@ -1,4 +1,4 @@
-//! Integration tests for tpu-preflight.
+//! Integration tests for tpu-doc.
 //!
 //! These tests verify the behavior of the validation checks using mock platform data.
 

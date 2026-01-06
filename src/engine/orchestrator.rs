@@ -93,6 +93,17 @@ impl CheckOrchestrator {
         self.run_checks(&ids)
     }
 
+    /// Run checks in multiple categories
+    pub fn run_categories(&self, categories: &[CheckCategory]) -> ValidationReport {
+        let ids: Vec<String> = self
+            .checks
+            .iter()
+            .filter(|c| categories.contains(&c.category))
+            .map(|c| c.id.clone())
+            .collect();
+        self.run_checks(&ids)
+    }
+
     /// Run specific checks by ID
     pub fn run_specific(&self, check_ids: &[String]) -> ValidationReport {
         self.run_checks(check_ids)
@@ -129,9 +140,20 @@ impl CheckOrchestrator {
         let hostname = linux::get_hostname().unwrap_or_else(|_| "unknown".to_string());
         let tpu_type = tpu::get_tpu_type().ok().map(|t| t.to_string());
 
-        let mut agg = aggregator.lock().unwrap();
-        agg.set_metadata(hostname, tpu_type, total_duration_ms);
-        agg.to_report()
+        // Handle potential mutex poisoning gracefully
+        let report = match aggregator.lock() {
+            Ok(mut agg) => {
+                agg.set_metadata(hostname, tpu_type, total_duration_ms);
+                agg.to_report()
+            }
+            Err(poisoned) => {
+                // If the mutex is poisoned, recover the data anyway
+                let mut agg = poisoned.into_inner();
+                agg.set_metadata(hostname, tpu_type, total_duration_ms);
+                agg.to_report()
+            }
+        };
+        report
     }
 
     /// Run checks sequentially
@@ -148,8 +170,7 @@ impl CheckOrchestrator {
                     result: Some(result.clone()),
                 };
 
-                {
-                    let mut agg = aggregator.lock().unwrap();
+                if let Ok(mut agg) = aggregator.lock() {
                     agg.add_result(check_struct);
                 }
 
@@ -198,7 +219,9 @@ impl CheckOrchestrator {
                             description: check.description.clone(),
                             result: Some(result),
                         };
-                        aggregator.lock().unwrap().add_result(check_struct);
+                        if let Ok(mut agg) = aggregator.lock() {
+                            agg.add_result(check_struct);
+                        }
                     }
                 }
                 break;
@@ -276,12 +299,17 @@ impl CheckOrchestrator {
                     })
                     .collect();
 
-                handles.into_iter().map(|h| h.join().unwrap()).collect()
+                handles
+                    .into_iter()
+                    .filter_map(|h| h.join().ok())
+                    .collect()
             });
 
             // Add results to aggregator
             for check_struct in results {
-                aggregator.lock().unwrap().add_result(check_struct);
+                if let Ok(mut agg) = aggregator.lock() {
+                    agg.add_result(check_struct);
+                }
             }
 
             // Mark as completed
@@ -292,9 +320,10 @@ impl CheckOrchestrator {
 
             // Check fail-fast
             if self.config.fail_fast {
-                let agg = aggregator.lock().unwrap();
-                if agg.has_failures() {
-                    break;
+                if let Ok(agg) = aggregator.lock() {
+                    if agg.has_failures() {
+                        break;
+                    }
                 }
             }
         }
@@ -373,7 +402,7 @@ impl CheckOrchestrator {
 
 /// Create all registered checks with their execution functions
 pub fn create_all_checks() -> Vec<RegisteredCheck> {
-    use crate::checks::{hardware, io, performance, security, stack};
+    use crate::checks::{config, hardware, io, performance, security, stack};
 
     let mut checks = Vec::new();
 
@@ -688,6 +717,57 @@ pub fn create_all_checks() -> Vec<RegisteredCheck> {
         category: CheckCategory::Security,
         description: "Provide guidance on firewall configuration".to_string(),
         check_fn: Box::new(security::run_sec007),
+        dependencies: vec![],
+        estimated_duration_ms: 100,
+    });
+
+    // Configuration checks
+    checks.push(RegisteredCheck {
+        id: "CFG-001".to_string(),
+        name: "XLA Flags Audit".to_string(),
+        category: CheckCategory::Config,
+        description: "Check XLA_FLAGS for potential issues".to_string(),
+        check_fn: Box::new(config::check_xla_flags),
+        dependencies: vec![],
+        estimated_duration_ms: 100,
+    });
+
+    checks.push(RegisteredCheck {
+        id: "CFG-002".to_string(),
+        name: "JAX Configuration Audit".to_string(),
+        category: CheckCategory::Config,
+        description: "Check JAX configuration values".to_string(),
+        check_fn: Box::new(config::check_jax_config),
+        dependencies: vec!["STK-001".to_string()],
+        estimated_duration_ms: 100,
+    });
+
+    checks.push(RegisteredCheck {
+        id: "CFG-003".to_string(),
+        name: "Memory Preallocation Check".to_string(),
+        category: CheckCategory::Config,
+        description: "Check memory preallocation settings".to_string(),
+        check_fn: Box::new(config::check_memory_config),
+        dependencies: vec![],
+        estimated_duration_ms: 100,
+    });
+
+    checks.push(RegisteredCheck {
+        id: "CFG-004".to_string(),
+        name: "Distributed Configuration Check".to_string(),
+        category: CheckCategory::Config,
+        description: "Check multi-host configuration".to_string(),
+        check_fn: Box::new(config::check_distributed_config),
+        dependencies: vec!["HW-001".to_string()],
+        estimated_duration_ms: 100,
+    });
+
+    checks.push(RegisteredCheck {
+        id: "CFG-005".to_string(),
+        name: "Logging Configuration Check".to_string(),
+        category: CheckCategory::Config,
+        description: "Check logging and debug settings".to_string(),
+        check_fn: Box::new(config::check_logging_config),
         dependencies: vec![],
         estimated_duration_ms: 100,
     });

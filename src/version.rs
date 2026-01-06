@@ -16,7 +16,7 @@ pub struct BuildInfo {
 
 impl fmt::Display for BuildInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "tpu-preflight {}", self.version)?;
+        writeln!(f, "tpu-doc {}", self.version)?;
 
         if let Some(commit) = self.commit {
             writeln!(f, "Commit: {}", commit)?;
@@ -40,9 +40,9 @@ impl fmt::Display for BuildInfo {
 pub fn get_build_info() -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION"),
-        commit: option_env!("TPU_PREFLIGHT_GIT_HASH"),
-        build_date: option_env!("TPU_PREFLIGHT_BUILD_DATE"),
-        target: env!("TARGET"),
-        rustc_version: option_env!("TPU_PREFLIGHT_RUSTC_VERSION"),
+        commit: option_env!("TPU_DOC_GIT_HASH"),
+        build_date: option_env!("TPU_DOC_BUILD_DATE"),
+        target: std::env::consts::ARCH,
+        rustc_version: option_env!("TPU_DOC_RUSTC_VERSION"),
     }
 }

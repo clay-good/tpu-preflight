@@ -6,7 +6,7 @@
 //! # Graceful Degradation
 //!
 //! This module handles errors gracefully:
-//! - Not on TPU: is_tpu_vm() returns false, functions return PreflightError::NotOnTpu
+//! - Not on TPU: is_tpu_vm() returns false, functions return TpuDocError::NotOnTpu
 //! - Missing sysfs: Falls back to environment variables
 //! - Missing env vars: Falls back to GCP metadata or defaults
 //! - Parse errors: Uses safe defaults for chip counts, temperatures
@@ -21,7 +21,7 @@
 //! No function in this module will panic.
 
 use crate::platform::{gcp, linux};
-use crate::PreflightError;
+use crate::TpuDocError;
 use std::path::Path;
 
 /// TPU generation/type
@@ -134,7 +134,7 @@ pub fn is_tpu_vm() -> bool {
 }
 
 /// Get the TPU type/generation
-pub fn get_tpu_type() -> Result<TpuType, PreflightError> {
+pub fn get_tpu_type() -> Result<TpuType, TpuDocError> {
     // Try environment variable first
     if let Some(tpu_name) = linux::get_environment_variable("TPU_NAME") {
         return Ok(parse_tpu_type(&tpu_name));
@@ -150,11 +150,11 @@ pub fn get_tpu_type() -> Result<TpuType, PreflightError> {
         return Ok(parse_tpu_type(&machine_type));
     }
 
-    Err(PreflightError::NotOnTpu)
+    Err(TpuDocError::NotOnTpu)
 }
 
 /// Get TPU chip count
-pub fn get_tpu_chip_count() -> Result<u32, PreflightError> {
+pub fn get_tpu_chip_count() -> Result<u32, TpuDocError> {
     // Try environment variable
     if let Some(chips_str) = linux::get_environment_variable("TPU_CHIPS_PER_HOST") {
         if let Ok(chips) = chips_str.parse() {
@@ -186,7 +186,7 @@ pub fn get_tpu_chip_count() -> Result<u32, PreflightError> {
 }
 
 /// Get expected chip count (for comparison)
-pub fn get_expected_chip_count() -> Result<u32, PreflightError> {
+pub fn get_expected_chip_count() -> Result<u32, TpuDocError> {
     // Try environment variable override
     if let Some(expected) = linux::get_environment_variable("TPU_EXPECTED_CHIPS") {
         if let Ok(chips) = expected.parse() {
@@ -202,7 +202,7 @@ pub fn get_expected_chip_count() -> Result<u32, PreflightError> {
 }
 
 /// Get TPU topology information
-pub fn get_tpu_topology() -> Result<TpuTopology, PreflightError> {
+pub fn get_tpu_topology() -> Result<TpuTopology, TpuDocError> {
     let chips = get_tpu_chip_count()?;
     let tpu_type = get_tpu_type()?;
 
@@ -226,7 +226,7 @@ pub fn get_tpu_topology() -> Result<TpuTopology, PreflightError> {
 }
 
 /// Get HBM memory information
-pub fn get_hbm_info() -> Result<HbmInfo, PreflightError> {
+pub fn get_hbm_info() -> Result<HbmInfo, TpuDocError> {
     let tpu_type = get_tpu_type()?;
     let chips = get_tpu_chip_count()?;
 
@@ -254,7 +254,7 @@ pub fn get_hbm_info() -> Result<HbmInfo, PreflightError> {
 }
 
 /// Get TPU health status
-pub fn get_tpu_health() -> Result<TpuHealth, PreflightError> {
+pub fn get_tpu_health() -> Result<TpuHealth, TpuDocError> {
     // Try to read health from sysfs or environment
     if let Some(health) = linux::get_environment_variable("TPU_HEALTH") {
         return Ok(match health.to_lowercase().as_str() {
@@ -269,7 +269,7 @@ pub fn get_tpu_health() -> Result<TpuHealth, PreflightError> {
     if is_tpu_vm() {
         Ok(TpuHealth::Healthy)
     } else {
-        Err(PreflightError::NotOnTpu)
+        Err(TpuDocError::NotOnTpu)
     }
 }
 
@@ -296,7 +296,7 @@ pub fn check_tpu_driver_loaded() -> bool {
 }
 
 /// Get driver version
-pub fn get_driver_version() -> Result<String, PreflightError> {
+pub fn get_driver_version() -> Result<String, TpuDocError> {
     // Try to read from sysfs
     let version_paths = [
         "/sys/module/tpu/version",
@@ -314,14 +314,14 @@ pub fn get_driver_version() -> Result<String, PreflightError> {
         return Ok(version);
     }
 
-    Err(PreflightError::IoError {
+    Err(TpuDocError::IoError {
         context: "get_driver_version".to_string(),
         message: "Driver version not available".to_string(),
     })
 }
 
 /// Get libtpu version
-pub fn get_libtpu_version() -> Result<String, PreflightError> {
+pub fn get_libtpu_version() -> Result<String, TpuDocError> {
     // Try environment variable
     if let Some(version) = linux::get_environment_variable("LIBTPU_VERSION") {
         return Ok(version);
@@ -341,14 +341,14 @@ pub fn get_libtpu_version() -> Result<String, PreflightError> {
         }
     }
 
-    Err(PreflightError::IoError {
+    Err(TpuDocError::IoError {
         context: "get_libtpu_version".to_string(),
         message: "libtpu not found".to_string(),
     })
 }
 
 /// Get thermal information
-pub fn get_thermal_info() -> Result<ThermalInfo, PreflightError> {
+pub fn get_thermal_info() -> Result<ThermalInfo, TpuDocError> {
     // Try to read from sysfs thermal zones
     let mut temperatures = Vec::new();
 
@@ -384,7 +384,7 @@ pub fn get_thermal_info() -> Result<ThermalInfo, PreflightError> {
 }
 
 /// Get error counters
-pub fn get_error_counters() -> Result<ErrorCounters, PreflightError> {
+pub fn get_error_counters() -> Result<ErrorCounters, TpuDocError> {
     // Try to read from sysfs
     // This is hardware-specific and may not be available on all TPUs
 
@@ -403,13 +403,13 @@ pub fn get_error_counters() -> Result<ErrorCounters, PreflightError> {
 }
 
 /// Get ICI interconnect status
-pub fn get_ici_status() -> Result<IciStatus, PreflightError> {
+pub fn get_ici_status() -> Result<IciStatus, TpuDocError> {
     // ICI status is not easily available without libtpu
     // Return a default healthy status for multi-chip configurations
 
     let chips = get_tpu_chip_count()?;
     if chips <= 1 {
-        return Err(PreflightError::IoError {
+        return Err(TpuDocError::IoError {
             context: "get_ici_status".to_string(),
             message: "Single chip configuration".to_string(),
         });

@@ -2,10 +2,10 @@
 //!
 //! Tests for terminal, JSON, and JUnit XML output formatters.
 
-use tpu_preflight::cli::output::{get_formatter, JsonFormatter, JunitFormatter, OutputFormatter, TerminalFormatter};
-use tpu_preflight::cli::args::OutputFormat;
-use tpu_preflight::engine::result::ValidationReport;
-use tpu_preflight::{Check, CheckCategory, CheckResult};
+use tpu_doc::cli::output::{get_formatter, JsonFormatter, JunitFormatter, OutputFormatter, TerminalFormatter};
+use tpu_doc::cli::args::OutputFormat;
+use tpu_doc::engine::result::ValidationReport;
+use tpu_doc::{Check, CheckCategory, CheckResult};
 
 fn create_sample_report() -> ValidationReport {
     ValidationReport {
@@ -108,7 +108,7 @@ fn test_terminal_formatter_basic() {
     let report = create_sample_report();
     let output = formatter.format(&report);
 
-    assert!(output.contains("tpu-preflight validation report"));
+    assert!(output.contains("tpu-doc validation report"));
     assert!(output.contains("test-vm-001"));
     assert!(output.contains("v5e"));
     assert!(output.contains("SUMMARY"));
@@ -325,7 +325,7 @@ fn test_junit_formatter_testcase_structure() {
     let output = formatter.format(&report);
 
     assert!(output.contains("<testcase name=\"HW-001\""));
-    assert!(output.contains("classname=\"tpu-preflight."));
+    assert!(output.contains("classname=\"tpu-doc."));
     assert!(output.contains("time=\""));
 }
 
@@ -389,7 +389,7 @@ fn test_get_formatter_text() {
     let formatter = get_formatter(&OutputFormat::Text, false, false, false);
     let report = create_sample_report();
     let output = formatter.format(&report);
-    assert!(output.contains("tpu-preflight validation report"));
+    assert!(output.contains("tpu-doc validation report"));
 }
 
 #[test]

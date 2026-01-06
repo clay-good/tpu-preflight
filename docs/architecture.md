@@ -1,8 +1,8 @@
-# tpu-preflight Architecture
+# tpu-doc Architecture
 
 ## Overview
 
-tpu-preflight is a single-binary command-line tool that validates Google Cloud TPU environments before production deployment. The tool performs read-only validation across five domains: hardware health, software stack compatibility, performance baselines, I/O throughput, and security posture.
+tpu-doc is a single-binary command-line tool that validates Google Cloud TPU environments before production deployment. The tool performs read-only validation across six domains: hardware health, software stack compatibility, performance baselines, I/O throughput, security posture, and configuration audit.
 
 The architecture prioritizes:
 
@@ -18,7 +18,7 @@ The architecture prioritizes:
 
 ```
 +===========================================================================+
-|                              tpu-preflight                                |
+|                              tpu-doc                                |
 +===========================================================================+
 |                                                                           |
 |  +---------------------------------------------------------------------+  |
@@ -52,19 +52,19 @@ The architecture prioritizes:
 |  +---------------------------------------------------------------------+  |
 |  |                    Check Modules (checks/)                          |  |
 |  |                                                                     |  |
-|  |  +------------+  +----------+  +-------------+  +------+  +------+  |  |
-|  |  | Hardware   |  | Stack    |  | Performance |  | I/O  |  | Sec  |  |  |
-|  |  | (HW-001-   |  | (STK-001-|  | (PERF-001-  |  |(IO-  |  |(SEC- |  |  |
-|  |  |  HW-006)   |  |  STK-007)|  |  PERF-005)  |  | 001- |  | 001- |  |  |
-|  |  |            |  |          |  |             |  | 006) |  | 007) |  |  |
-|  |  | - TPU      |  | - JAX    |  | - MXU util  |  |      |  |      |  |  |
-|  |  |   detect   |  |   ver    |  | - HBM bw    |  | - GCS|  | - IAM|  |  |
-|  |  | - HBM mem  |  | - libtpu |  | - Latency   |  | - DNS|  | - Net|  |  |
-|  |  | - Thermal  |  | - Python |  | - Compile   |  | - Disk |  | - WI|  |  |
-|  |  | - Errors   |  | - PJRT   |  |   time      |  |      |  |      |  |  |
-|  |  | - ICI      |  | - Deps   |  |             |  |      |  |      |  |  |
-|  |  | - Driver   |  | - Env    |  |             |  |      |  |      |  |  |
-|  |  +------------+  +----------+  +-------------+  +------+  +------+  |  |
+|  |  +----------+ +--------+ +-----------+ +------+ +------+ +------+   |  |
+|  |  | Hardware | | Stack  | |Performance| | I/O  | | Sec  | |Config|   |  |
+|  |  | (HW-001- | |(STK-001| |(PERF-001- | |(IO-  | |(SEC- | |(CFG- |   |  |
+|  |  |  HW-006) | | STK-007| | PERF-005) | | 001- | | 001- | | 001- |   |  |
+|  |  |          | |        | |           | | 006) | | 007) | | 005) |   |  |
+|  |  | - TPU    | | - JAX  | | - MXU     | |      | |      | |      |   |  |
+|  |  |   detect | |   ver  | | - HBM bw  | | - GCS| | - IAM| | - XLA|   |  |
+|  |  | - HBM    | | -libtpu| | - Latency | | - DNS| | - Net| | - JAX|   |  |
+|  |  | - Therm  | | -Python| | - Compile | | -Disk| | - WI | | - Mem|   |  |
+|  |  | - Errors | | - PJRT | |           | |      | |      | | -Dist|   |  |
+|  |  | - ICI    | | - Deps | |           | |      | |      | | - Log|   |  |
+|  |  | - Driver | | - Env  | |           | |      | |      | |      |   |  |
+|  |  +----------+ +--------+ +-----------+ +------+ +------+ +------+   |  |
 |  |                                                                     |  |
 |  +---------------------------------------------------------------------+  |
 |                                    |                                      |
@@ -226,6 +226,7 @@ Module responsibilities:
 - Performance: Validate baseline performance characteristics
 - I/O: Validate storage and network throughput
 - Security: Validate security configuration and posture
+- Configuration: Audit XLA flags, JAX config, memory, distributed, and logging settings
 
 ### Platform Abstraction Layer
 
@@ -276,10 +277,10 @@ The platform layer uses a trait-based design that enables testing and extensibil
 ```
 trait TpuPlatform {
     fn is_tpu_vm(&self) -> bool;
-    fn get_tpu_type(&self) -> Result<TpuType, PreflightError>;
-    fn get_chip_count(&self) -> Result<u32, PreflightError>;
-    fn get_hbm_info(&self) -> Result<HbmInfo, PreflightError>;
-    fn get_health(&self) -> Result<TpuHealth, PreflightError>;
+    fn get_tpu_type(&self) -> Result<TpuType, TpuDocError>;
+    fn get_chip_count(&self) -> Result<u32, TpuDocError>;
+    fn get_hbm_info(&self) -> Result<HbmInfo, TpuDocError>;
+    fn get_health(&self) -> Result<TpuHealth, TpuDocError>;
     // ...
 }
 
@@ -297,9 +298,9 @@ This design allows:
 
 ## Error Handling Strategy
 
-tpu-preflight uses a layered error handling approach:
+tpu-doc uses a layered error handling approach:
 
-Layer 1 - Platform Errors: Low-level errors from system calls, file I/O, and network operations. These are wrapped in PreflightError with context about what operation failed.
+Layer 1 - Platform Errors: Low-level errors from system calls, file I/O, and network operations. These are wrapped in TpuDocError with context about what operation failed.
 
 Layer 2 - Check Errors: Errors during check execution. These are converted to Fail results rather than propagated, allowing other checks to continue.
 
@@ -311,7 +312,7 @@ Principle: A single failing check should not prevent other checks from running. 
 
 ## Security Model
 
-tpu-preflight is designed to be safe to run in production environments:
+tpu-doc is designed to be safe to run in production environments:
 
 Read-Only Operations: The tool never writes to the filesystem (except explicit output), never modifies system configuration, and never changes TPU state.
 
@@ -359,14 +360,14 @@ New Output Formats: Implement the OutputFormatter trait for new formats.
 
 New Platforms: Implement platform traits for new cloud providers or accelerators.
 
-Remote Execution: The library API (run_preflight function) enables integration into larger systems that might run validation remotely.
+Remote Execution: The library API (run_checks function) enables integration into larger systems that might run validation remotely.
 
 ---
 
 ## File Organization
 
 ```
-tpu-preflight/
+tpu-doc/
 |
 +-- Cargo.toml              # Project manifest
 +-- build.rs                # Build script (version info, libtpu detection)
@@ -389,6 +390,7 @@ tpu-preflight/
 |   |   +-- performance.rs  # PERF-001 through PERF-005
 |   |   +-- io.rs           # IO-001 through IO-006
 |   |   +-- security.rs     # SEC-001 through SEC-007
+|   |   +-- config.rs       # CFG-001 through CFG-005
 |   |
 |   +-- engine/
 |   |   +-- mod.rs          # Module exports
@@ -418,7 +420,9 @@ tpu-preflight/
 +-- docs/
     +-- architecture.md     # This document
     +-- checks.md           # Check reference
+    +-- commands.md         # Command reference
     +-- configuration.md    # Configuration options
+    +-- ai-integration.md   # AI features guide
     +-- ci-integration.md   # CI/CD integration
     +-- development.md      # Development guide
 ```

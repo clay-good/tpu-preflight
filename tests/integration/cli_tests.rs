@@ -2,7 +2,7 @@
 //!
 //! Tests for argument parsing and command handling.
 
-use tpu_preflight::cli::args::{Args, CategoryFilter, Command, OutputFormat};
+use tpu_doc::cli::args::{Args, CategoryFilter, Command, OutputFormat};
 
 #[test]
 fn test_default_args() {

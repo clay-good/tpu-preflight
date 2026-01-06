@@ -1,11 +1,12 @@
-//! tpu-preflight CLI entry point
+//! tpu-doc CLI entry point
 //!
-//! Pre-deployment validation tool for Google Cloud TPU environments.
+//! TPU environment diagnostics, discovery, and troubleshooting tool.
 
-use tpu_preflight::cli::args::{Args, Command};
-use tpu_preflight::cli::output::get_formatter;
-use tpu_preflight::version::get_build_info;
-use tpu_preflight::{run_preflight, PreflightConfig};
+use tpu_doc::cli::args::{Args, Command};
+use tpu_doc::cli::output::get_formatter;
+use tpu_doc::commands;
+use tpu_doc::version::get_build_info;
+use tpu_doc::{run_checks as run_validation, TpuDocConfig};
 
 use std::process::ExitCode;
 
@@ -15,7 +16,7 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(e) => {
             eprintln!("Error: {}", e);
-            eprintln!("Run 'tpu-preflight --help' for usage information.");
+            eprintln!("Run 'tpu-doc --help' for usage information.");
             return ExitCode::from(3);
         }
     };
@@ -37,6 +38,12 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Check => run_checks(&args),
+        Command::Info => run_info(&args),
+        Command::Stack => run_stack(&args),
+        Command::Cache => run_cache(&args),
+        Command::Snapshot => run_snapshot(&args),
+        Command::Audit => run_audit(&args),
+        Command::Analyze => run_analyze(&args),
     }
 }
 
@@ -47,13 +54,19 @@ fn print_version() {
 
 fn print_help() {
     println!(
-        r#"tpu-preflight - Pre-deployment validation for Google Cloud TPU environments
+        r#"tpu-doc - TPU environment diagnostics, discovery, and troubleshooting
 
 USAGE:
-    tpu-preflight [COMMAND] [OPTIONS]
+    tpu-doc [COMMAND] [OPTIONS]
 
 COMMANDS:
     check       Run validation checks (default)
+    info        Display complete environment information
+    stack       Analyze software stack compatibility
+    cache       Analyze XLA compilation cache
+    snapshot    Capture resource utilization snapshot
+    audit       Run configuration audit
+    analyze     AI-powered log analysis (requires --ai flag)
     version     Print version information
     list        List all available checks
 
@@ -64,6 +77,7 @@ CHECK OPTIONS:
     --performance   Run performance baseline checks only
     --io            Run I/O throughput checks only
     --security      Run security posture checks only
+    --config-audit  Run configuration audit checks only
     --skip <ID>     Skip specific check by ID (repeatable)
     --only <ID>     Run only specific check by ID (repeatable)
 
@@ -82,6 +96,21 @@ CONFIGURATION:
     --config <FILE>   Load configuration from TOML file
     --baseline <FILE> Compare against baseline file
 
+INFO OPTIONS:
+    (uses global --format option)
+
+STACK OPTIONS:
+    --matrix        Display full compatibility matrix
+
+SNAPSHOT OPTIONS:
+    --continuous <N>  Refresh every N seconds
+
+ANALYZE OPTIONS:
+    --ai              Enable AI analysis (required)
+    --provider <P>    AI provider: anthropic, google (default: anthropic)
+    --model <M>       Model to use (provider-specific)
+    --question <Q>    Specific question to answer about the log
+
 GENERAL:
     -h, --help      Print this help message
     -V, --version   Print version information
@@ -93,10 +122,19 @@ EXIT CODES:
     3   Runtime error
 
 EXAMPLES:
-    tpu-preflight                    Run all checks with default settings
-    tpu-preflight check --hardware   Run only hardware checks
-    tpu-preflight check --format json --quiet > results.json
-    tpu-preflight list               List all available checks"#
+    tpu-doc                           Run all checks with default settings
+    tpu-doc check --hardware          Run only hardware checks
+    tpu-doc info                      Display environment information
+    tpu-doc info --format json        Environment info as JSON
+    tpu-doc stack                     Analyze software stack
+    tpu-doc stack --matrix            Show compatibility matrix
+    tpu-doc cache                     Analyze XLA cache status
+    tpu-doc snapshot                  Capture resource snapshot
+    tpu-doc snapshot --continuous 5   Refresh every 5 seconds
+    tpu-doc audit                     Run configuration audit
+    tpu-doc analyze error.log --ai    AI analysis of log file
+    tpu-doc check --format json --quiet > results.json
+    tpu-doc list                      List all available checks"#
     );
 }
 
@@ -112,19 +150,19 @@ fn print_check_list() {
     println!("  HW-006   Driver Status");
     println!();
     println!("STACK CHECKS:");
-    println!("  STK-001  JAX Version");
-    println!("  STK-002  libtpu Version");
-    println!("  STK-003  XLA Compiler Version");
-    println!("  STK-004  Python Version");
-    println!("  STK-005  PJRT Plugin Status");
-    println!("  STK-006  Dependency Conflicts");
-    println!("  STK-007  Environment Variables");
+    println!("  STK-001  JAX Version Check");
+    println!("  STK-002  libtpu Version Check");
+    println!("  STK-003  XLA Compiler Check");
+    println!("  STK-004  Python Version Check");
+    println!("  STK-005  PJRT Plugin Check");
+    println!("  STK-006  Dependency Conflict Check");
+    println!("  STK-007  Environment Variables Check");
     println!();
     println!("PERFORMANCE CHECKS:");
-    println!("  PERF-001 MXU Utilization Test");
+    println!("  PERF-001 MXU Utilization Baseline");
     println!("  PERF-002 HBM Bandwidth Test");
     println!("  PERF-003 Chip-to-Chip Latency");
-    println!("  PERF-004 Compilation Latency");
+    println!("  PERF-004 XLA Compilation Latency");
     println!("  PERF-005 Memory Pressure Test");
     println!();
     println!("I/O CHECKS:");
@@ -143,14 +181,21 @@ fn print_check_list() {
     println!("  SEC-005  Instance Metadata Access");
     println!("  SEC-006  SSH Key Management");
     println!("  SEC-007  Firewall Rules");
+    println!();
+    println!("CONFIGURATION AUDIT CHECKS:");
+    println!("  CFG-001  XLA Flags Audit");
+    println!("  CFG-002  JAX Configuration Audit");
+    println!("  CFG-003  Memory Preallocation Check");
+    println!("  CFG-004  Distributed Configuration Check");
+    println!("  CFG-005  Logging Configuration Check");
 }
 
 fn run_checks(args: &Args) -> ExitCode {
     // Build configuration from arguments
-    let config = PreflightConfig::from_args(args);
+    let config = TpuDocConfig::from_args(args);
 
-    // Run preflight checks
-    let report = match run_preflight(config) {
+    // Run validation checks
+    let report = match run_validation(config) {
         Ok(report) => report,
         Err(e) => {
             eprintln!("Error running checks: {}", e);
@@ -173,5 +218,83 @@ fn run_checks(args: &Args) -> ExitCode {
         ExitCode::from(2)
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+fn run_info(args: &Args) -> ExitCode {
+    match commands::info::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error gathering environment info: {}", e);
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn run_stack(args: &Args) -> ExitCode {
+    match commands::stack::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error analyzing stack: {}", e);
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn run_cache(args: &Args) -> ExitCode {
+    match commands::cache::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error analyzing cache: {}", e);
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn run_snapshot(args: &Args) -> ExitCode {
+    match commands::snapshot::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error capturing snapshot: {}", e);
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn run_audit(args: &Args) -> ExitCode {
+    match commands::audit::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error running audit: {}", e);
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn run_analyze(args: &Args) -> ExitCode {
+    match commands::analyze::run(args) {
+        Ok(output) => {
+            println!("{}", output);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error analyzing log: {}", e);
+            ExitCode::from(3)
+        }
     }
 }

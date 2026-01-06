@@ -5,16 +5,16 @@
 //! # Graceful Degradation
 //!
 //! This module handles errors gracefully:
-//! - File not found: Returns appropriate PreflightError::IoError
-//! - Permission denied: Returns PreflightError::IoError with context
-//! - Parse errors: Returns PreflightError::ParseError with details
+//! - File not found: Returns appropriate TpuDocError::IoError
+//! - Permission denied: Returns TpuDocError::IoError with context
+//! - Parse errors: Returns TpuDocError::ParseError with details
 //! - Missing data: Uses defaults (0, empty string) where safe
 //! - Command failures: Returns error with command context
 //!
 //! No function in this module will panic. All errors are propagated
 //! via Result types for the caller to handle.
 
-use crate::PreflightError;
+use crate::TpuDocError;
 use std::fs;
 use std::path::Path;
 
@@ -43,7 +43,7 @@ pub struct DiskInfo {
 }
 
 /// Get the system hostname
-pub fn get_hostname() -> Result<String, PreflightError> {
+pub fn get_hostname() -> Result<String, TpuDocError> {
     // Try /etc/hostname first
     if let Ok(hostname) = fs::read_to_string("/etc/hostname") {
         let hostname = hostname.trim().to_string();
@@ -60,15 +60,15 @@ pub fn get_hostname() -> Result<String, PreflightError> {
         }
     }
 
-    Err(PreflightError::IoError {
+    Err(TpuDocError::IoError {
         context: "get_hostname".to_string(),
         message: "Could not read hostname from /etc/hostname or /proc".to_string(),
     })
 }
 
 /// Get kernel version from /proc/version
-pub fn get_kernel_version() -> Result<String, PreflightError> {
-    let content = fs::read_to_string("/proc/version").map_err(|e| PreflightError::IoError {
+pub fn get_kernel_version() -> Result<String, TpuDocError> {
+    let content = fs::read_to_string("/proc/version").map_err(|e| TpuDocError::IoError {
         context: "get_kernel_version".to_string(),
         message: e.to_string(),
     })?;
@@ -77,7 +77,7 @@ pub fn get_kernel_version() -> Result<String, PreflightError> {
     if let Some(version) = content.split_whitespace().nth(2) {
         Ok(version.to_string())
     } else {
-        Err(PreflightError::ParseError {
+        Err(TpuDocError::ParseError {
             context: "get_kernel_version".to_string(),
             message: "Could not parse kernel version".to_string(),
         })
@@ -85,8 +85,8 @@ pub fn get_kernel_version() -> Result<String, PreflightError> {
 }
 
 /// Get memory information from /proc/meminfo
-pub fn get_memory_info() -> Result<MemoryInfo, PreflightError> {
-    let content = fs::read_to_string("/proc/meminfo").map_err(|e| PreflightError::IoError {
+pub fn get_memory_info() -> Result<MemoryInfo, TpuDocError> {
+    let content = fs::read_to_string("/proc/meminfo").map_err(|e| TpuDocError::IoError {
         context: "get_memory_info".to_string(),
         message: e.to_string(),
     })?;
@@ -119,8 +119,8 @@ pub fn get_memory_info() -> Result<MemoryInfo, PreflightError> {
 }
 
 /// Get CPU information from /proc/cpuinfo
-pub fn get_cpu_info() -> Result<CpuInfo, PreflightError> {
-    let content = fs::read_to_string("/proc/cpuinfo").map_err(|e| PreflightError::IoError {
+pub fn get_cpu_info() -> Result<CpuInfo, TpuDocError> {
+    let content = fs::read_to_string("/proc/cpuinfo").map_err(|e| TpuDocError::IoError {
         context: "get_cpu_info".to_string(),
         message: e.to_string(),
     })?;
@@ -151,19 +151,19 @@ pub fn get_cpu_info() -> Result<CpuInfo, PreflightError> {
 }
 
 /// Get disk space information for a path
-pub fn get_disk_space(path: &str) -> Result<DiskInfo, PreflightError> {
+pub fn get_disk_space(path: &str) -> Result<DiskInfo, TpuDocError> {
     // Use statvfs via std::fs::metadata and a platform-specific approach
     // For simplicity, we'll use the df command
     let output = std::process::Command::new("df")
         .args(["-B1", path])
         .output()
-        .map_err(|e| PreflightError::IoError {
+        .map_err(|e| TpuDocError::IoError {
             context: "get_disk_space".to_string(),
             message: e.to_string(),
         })?;
 
     if !output.status.success() {
-        return Err(PreflightError::IoError {
+        return Err(TpuDocError::IoError {
             context: "get_disk_space".to_string(),
             message: "df command failed".to_string(),
         });
@@ -173,7 +173,7 @@ pub fn get_disk_space(path: &str) -> Result<DiskInfo, PreflightError> {
     let lines: Vec<&str> = stdout.lines().collect();
 
     if lines.len() < 2 {
-        return Err(PreflightError::ParseError {
+        return Err(TpuDocError::ParseError {
             context: "get_disk_space".to_string(),
             message: "Could not parse df output".to_string(),
         });
@@ -192,7 +192,7 @@ pub fn get_disk_space(path: &str) -> Result<DiskInfo, PreflightError> {
             free_bytes: total.saturating_sub(used),
         })
     } else {
-        Err(PreflightError::ParseError {
+        Err(TpuDocError::ParseError {
             context: "get_disk_space".to_string(),
             message: "Could not parse df output".to_string(),
         })
@@ -200,27 +200,27 @@ pub fn get_disk_space(path: &str) -> Result<DiskInfo, PreflightError> {
 }
 
 /// Read a value from sysfs
-pub fn read_sysfs_value(path: &str) -> Result<String, PreflightError> {
+pub fn read_sysfs_value(path: &str) -> Result<String, TpuDocError> {
     fs::read_to_string(path)
         .map(|s| s.trim().to_string())
-        .map_err(|e| PreflightError::IoError {
+        .map_err(|e| TpuDocError::IoError {
             context: format!("read_sysfs_value({})", path),
             message: e.to_string(),
         })
 }
 
 /// Check if a process is running by name
-pub fn check_process_running(name: &str) -> Result<bool, PreflightError> {
+pub fn check_process_running(name: &str) -> Result<bool, TpuDocError> {
     let proc_dir = Path::new("/proc");
 
     if !proc_dir.exists() {
-        return Err(PreflightError::IoError {
+        return Err(TpuDocError::IoError {
             context: "check_process_running".to_string(),
             message: "/proc does not exist".to_string(),
         });
     }
 
-    for entry in fs::read_dir(proc_dir).map_err(|e| PreflightError::IoError {
+    for entry in fs::read_dir(proc_dir).map_err(|e| TpuDocError::IoError {
         context: "check_process_running".to_string(),
         message: e.to_string(),
     })? {
